@@ -1,6 +1,74 @@
 
+import { AppTheme } from "./types";
 
 export const MODEL_NAME = "gemini-3-pro-preview";
+export const MODEL_FAST = "gemini-2.5-flash"; 
+export const TTS_MODEL = "gemini-2.5-flash-preview-tts";
+
+export const DEFAULT_THEMES: AppTheme[] = [
+  {
+    id: "light",
+    name: "Classic Light",
+    colors: {
+      bgMain: "#f8fafc", // slate-50
+      bgSidebar: "#ffffff", // white
+      textMain: "#0f172a", // slate-900
+      textSecondary: "#64748b", // slate-500
+      accent: "#f59e0b", // amber-500
+      accentText: "#0f172a",
+      border: "#e2e8f0" // slate-200
+    }
+  },
+  {
+    id: "dark",
+    name: "Cinematic Dark",
+    colors: {
+      bgMain: "#020617", // slate-950
+      bgSidebar: "#0f172a", // slate-900
+      textMain: "#f1f5f9", // slate-100
+      textSecondary: "#94a3b8", // slate-400
+      accent: "#f59e0b", // amber-500
+      accentText: "#000000",
+      border: "#1e293b" // slate-800
+    }
+  },
+  {
+    id: "forest",
+    name: "Forest Serenity",
+    colors: {
+      bgMain: "#f0fdf4",
+      bgSidebar: "#dcfce7",
+      textMain: "#14532d",
+      textSecondary: "#166534",
+      accent: "#15803d",
+      accentText: "#ffffff",
+      border: "#bbf7d0"
+    }
+  },
+  {
+    id: "royal",
+    name: "Royal Velvet",
+    colors: {
+      bgMain: "#2e1065",
+      bgSidebar: "#4c1d95",
+      textMain: "#faf5ff",
+      textSecondary: "#d8b4fe",
+      accent: "#fbbf24",
+      accentText: "#451a03",
+      border: "#5b21b6"
+    }
+  }
+];
+
+export const SYSTEM_INSTRUCTION_THEME = `
+You are a UI Design Expert specializing in Accessibility (WCAG 2.2).
+Your task is to generate a color theme for a web application based on a user's description.
+Output a JSON object matching the AppTheme colors interface.
+Rules:
+1. **Contrast:** Ensure 'textMain' has high contrast (4.5:1+) against 'bgMain' and 'bgSidebar'.
+2. **Harmony:** Colors should be aesthetically pleasing and match the requested mood.
+3. **Output:** STRICT JSON only.
+`;
 
 export const SYSTEM_INSTRUCTION_CHAT = `You are 'GeetGatha', an expert AI Lyricist Assistant for Indian Cinema. 
 Your goal is to help users create songs. You act as the interface.

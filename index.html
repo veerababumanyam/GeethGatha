@@ -1,41 +1,60 @@
+
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GeetGatha - AI Lyricist</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              'telugu': ['"Noto Sans Telugu"', 'sans-serif'],
+              'serif-telugu': ['"Noto Serif Telugu"', 'serif'],
+              'cinema': ['"Playfair Display"', 'serif'],
+            }
+          }
+        }
+      }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+Telugu:wght@400;500;700&family=Noto+Serif+Telugu:wght@400;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
     <style>
+      :root {
+        /* Base Theme Variables (Defaults) */
+        --bg-main: #f8fafc;
+        --bg-sidebar: #ffffff;
+        --text-main: #0f172a;
+        --text-secondary: #64748b;
+        --accent: #f59e0b;
+        --accent-text: #0f172a;
+        --border: #e2e8f0;
+      }
+      
       body {
         font-family: 'Outfit', sans-serif;
-        background-color: #0f172a; /* Slate 950 */
-        color: #e2e8f0; /* Slate 200 */
+        background-color: var(--bg-main);
+        color: var(--text-main);
       }
-      .font-telugu {
-        font-family: 'Noto Sans Telugu', sans-serif;
-      }
-      .font-serif-telugu {
-        font-family: 'Noto Serif Telugu', serif;
-      }
-      .font-cinema {
-        font-family: 'Playfair Display', serif;
-      }
+
       /* Custom Scrollbar */
       ::-webkit-scrollbar {
         width: 6px;
       }
       ::-webkit-scrollbar-track {
-        background: #1e293b; 
+        background: transparent; 
       }
       ::-webkit-scrollbar-thumb {
-        background: #475569; 
+        background: var(--text-secondary); 
         border-radius: 3px;
+        opacity: 0.5;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #64748b; 
+        background: var(--accent); 
       }
       
       .animate-pulse-slow {
@@ -62,7 +81,7 @@
 }
 </script>
 </head>
-  <body>
+  <body class="transition-colors duration-300">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

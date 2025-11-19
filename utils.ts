@@ -1,4 +1,5 @@
 
+
 import { GeneratedLyrics } from "./types";
 
 /**
@@ -70,4 +71,63 @@ export const formatLyricsForDisplay = (data: GeneratedLyrics): string => {
   });
 
   return output;
+};
+
+/**
+ * Maps human readable language names to BCP 47 language tags for speech recognition
+ */
+export const getLanguageCode = (lang: string): string => {
+  const map: Record<string, string> = {
+    "Hindi": "hi-IN",
+    "Telugu": "te-IN",
+    "Tamil": "ta-IN",
+    "Kannada": "kn-IN",
+    "Malayalam": "ml-IN",
+    "Marathi": "mr-IN",
+    "Gujarati": "gu-IN",
+    "Bengali": "bn-IN",
+    "Punjabi": "pa-IN",
+    "Urdu": "ur-IN",
+    "English": "en-IN",
+    "Assamese": "as-IN"
+  };
+  // Default to Indian English if specific mapping not found, as it handles mixed input well
+  return map[lang] || "en-IN";
+};
+
+/**
+ * Decodes and plays raw PCM audio data (24kHz) from Gemini TTS
+ */
+export const playPCMData = async (base64Data: string): Promise<void> => {
+  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+  
+  // Decode Base64
+  const binaryString = atob(base64Data);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+
+  // Convert PCM to Float32 AudioBuffer (raw 16-bit PCM to -1.0 to 1.0 float)
+  const dataInt16 = new Int16Array(bytes.buffer);
+  const buffer = audioContext.createBuffer(1, dataInt16.length, 24000);
+  const channelData = buffer.getChannelData(0);
+  for (let i = 0; i < dataInt16.length; i++) {
+    channelData[i] = dataInt16[i] / 32768.0;
+  }
+
+  // Play
+  const source = audioContext.createBufferSource();
+  source.buffer = buffer;
+  source.connect(audioContext.destination);
+  source.start();
+
+  return new Promise((resolve) => {
+    source.onended = () => {
+      source.disconnect();
+      audioContext.close();
+      resolve();
+    };
+  });
 };

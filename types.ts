@@ -31,6 +31,28 @@ export interface AgentStatus {
   steps: AgentStep[];
 }
 
+// --- Appearance & Theme Types ---
+
+export interface AppTheme {
+  id: string;
+  name: string;
+  colors: {
+    bgMain: string;       // Main background
+    bgSidebar: string;    // Sidebar/Card background
+    textMain: string;     // Primary text
+    textSecondary: string;// Secondary text/icons
+    accent: string;       // Primary action color
+    accentText: string;   // Text on accent color
+    border: string;       // Borders
+  };
+}
+
+export interface AppearanceSettings {
+  fontSize: number; // Base pixel size (default 16)
+  themeId: string;
+  customThemes: AppTheme[];
+}
+
 // --- Lyricist Specific Types ---
 
 export interface LanguageProfile {
