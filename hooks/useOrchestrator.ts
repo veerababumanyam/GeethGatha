@@ -8,6 +8,7 @@ import { runLyricistAgent } from "../agents/lyricist";
 import { runComplianceAgent } from "../agents/compliance";
 import { runReviewAgent } from "../agents/review";
 import { runFormatterAgent } from "../agents/formatter";
+import { GeminiError } from "../utils";
 
 export const useOrchestrator = () => {
   const [agentStatus, setAgentStatus] = useState<AgentStatus>({
@@ -110,12 +111,23 @@ export const useOrchestrator = () => {
         complianceReport: complianceReport
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Workflow Error:", error);
+      let friendlyMessage = "I encountered a musical block. Please try again.";
+      
+      // Handle known errors
+      if (error.name === 'GeminiError') {
+         if (error.type === 'AUTH') {
+           // Re-throw Auth errors to be caught by main UI for opening settings
+           throw error; 
+         }
+         friendlyMessage = `⚠️ ${error.message}`;
+      }
+
       addMessage({
         id: Date.now().toString(),
         role: "system",
-        content: "I encountered a musical block. Please check your API Key settings and try again.",
+        content: friendlyMessage,
         timestamp: new Date()
       });
     } finally {

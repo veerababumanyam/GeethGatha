@@ -37,7 +37,7 @@ const SidebarSection = ({
         className="w-full flex items-center justify-between p-4 hover:bg-secondary/30 transition-colors group outline-none focus:bg-secondary/20"
       >
         <span className="text-xs font-semibold uppercase tracking-wider flex items-center gap-2 text-muted-foreground group-hover:text-primary transition-colors">
-          {React.isValidElement(icon) ? React.cloneElement(icon as React.ReactElement, { className: "w-4 h-4" }) : icon}
+          {React.isValidElement(icon) ? React.cloneElement(icon as React.ReactElement<{ className?: string }>, { className: "w-4 h-4" }) : icon}
           {title}
         </span>
         <div className="flex items-center gap-3">
@@ -577,3 +577,4 @@ export const Sidebar = React.memo(({ isOpen, onClose, agentStatus, languageSetti
     </>
   );
 });
+    

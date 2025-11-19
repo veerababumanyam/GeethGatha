@@ -2,7 +2,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { MODEL_NAME, SYSTEM_INSTRUCTION_LYRICIST, SCENARIO_KNOWLEDGE_BASE } from "../config";
 import { GeneratedLyrics, LanguageProfile, EmotionAnalysis, GenerationSettings } from "../types";
-import { cleanAndParseJSON, formatLyricsForDisplay } from "../utils";
+import { cleanAndParseJSON, formatLyricsForDisplay, wrapGenAIError } from "../utils";
 
 const getRhymeDescription = (scheme: string): string => {
   switch (scheme) {
@@ -189,16 +189,7 @@ export const runLyricistAgent = async (
 
   } catch (error) {
     console.error("Lyricist Agent Error:", error);
-    return fallbackGeneration(key, researchData, userRequest, languageProfile.primary);
+    // Wrap error logic
+    throw wrapGenAIError(error);
   }
 };
-
-const fallbackGeneration = async (apiKey: string, researchData: string, userRequest: string, targetLanguage: string) => {
-  const ai = new GoogleGenAI({ apiKey: apiKey });
-  const response = await ai.models.generateContent({
-    model: MODEL_NAME,
-    config: { systemInstruction: SYSTEM_INSTRUCTION_LYRICIST },
-    contents: `Compose a song in ${targetLanguage} (SCRIPT: ${targetLanguage}) for: ${userRequest}. Context: ${researchData}. MANDATORY STRUCTURE: [Intro], [Verse 1], [Chorus], [Verse 2], [Chorus], [Bridge], [Verse 3], [Chorus], [Outro]. ENSURE END RHYMES (ANTHYA PRASA).`
-  });
-  return response.text || "Lyrics generation failed.";
-}

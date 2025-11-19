@@ -1,9 +1,9 @@
 
-import React, { useState } from "react";
-import { Music, Copy, Play, RefreshCw, Sparkles, Clock, ListMusic, FileCode, Eye, Loader2, StopCircle, Download, Printer, Share2 } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { Music, Copy, Play, RefreshCw, Sparkles, Clock, ListMusic, FileCode, Eye, Loader2, StopCircle, Download, Printer, Share2, Edit3, Save, Wand2, Check } from "lucide-react";
 import { GoogleGenAI, Modality } from "@google/genai";
-import { TTS_MODEL } from "../config";
-import { playPCMData } from "../utils";
+import { TTS_MODEL, MODEL_NAME } from "../config";
+import { playPCMData, wrapGenAIError } from "../utils";
 
 interface ActionButtonProps {
   icon: React.ReactNode;
@@ -12,12 +12,14 @@ interface ActionButtonProps {
   active?: boolean;
   disabled?: boolean;
   primary?: boolean;
+  title?: string;
 }
 
-const ActionButton = ({ icon, label, onClick, active, disabled, primary }: ActionButtonProps) => (
+const ActionButton = ({ icon, label, onClick, active, disabled, primary, title }: ActionButtonProps) => (
   <button 
     onClick={onClick}
     disabled={disabled}
+    title={title}
     className={`
       flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium transition-all border shadow-sm select-none
       ${active 
@@ -73,9 +75,17 @@ const renderStyledLine = (line: string) => {
 
 export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: string, sunoContent?: string, apiKey?: string }) => {
   const [viewMode, setViewMode] = useState<'PRETTY' | 'SUNO'>('PRETTY');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editableContent, setEditableContent] = useState(content);
   const [audioStatus, setAudioStatus] = useState<'IDLE' | 'GENERATING' | 'PLAYING'>('IDLE');
+  const [isFixingRhyme, setIsFixingRhyme] = useState(false);
 
-  const lines = content.split('\n');
+  // Sync props to edit state if props change (new generation)
+  useEffect(() => {
+    setEditableContent(content);
+  }, [content]);
+
+  const lines = editableContent.split('\n');
   
   // Extract metadata if present
   const metadata: Record<string, string> = {};
@@ -91,12 +101,12 @@ export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: stri
   });
 
   const copyToClipboard = () => {
-    const textToCopy = viewMode === 'SUNO' && sunoContent ? sunoContent : content;
+    const textToCopy = viewMode === 'SUNO' && sunoContent ? sunoContent : editableContent;
     navigator.clipboard.writeText(textToCopy);
   };
 
   const handleDownload = () => {
-    const textToSave = viewMode === 'SUNO' && sunoContent ? sunoContent : content;
+    const textToSave = viewMode === 'SUNO' && sunoContent ? sunoContent : editableContent;
     const blob = new Blob([textToSave], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -177,7 +187,7 @@ export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: stri
   };
 
   const handleShare = async () => {
-    const shareText = `${metadata.title ? metadata.title + '\n\n' : ''}${content}\n\n(Created with SWAZ eLyrics)`;
+    const shareText = `${metadata.title ? metadata.title + '\n\n' : ''}${editableContent}\n\n(Created with SWAZ eLyrics)`;
     const shareData = {
         title: metadata.title || 'SWAZ eLyrics Song',
         text: shareText,
@@ -192,6 +202,28 @@ export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: stri
     } else {
         navigator.clipboard.writeText(shareText);
         alert('Lyrics copied to clipboard!');
+    }
+  };
+
+  const handleMagicRhymeFix = async () => {
+    if (!apiKey) return;
+    setIsFixingRhyme(true);
+    try {
+       const ai = new GoogleGenAI({ apiKey: apiKey });
+       const response = await ai.models.generateContent({
+         model: MODEL_NAME,
+         contents: `Review the following song lyrics. Identify lines that have weak rhymes (Anthya Prasa). Rewrite ONLY those specific lines to have better rhyming endings while keeping the same meaning. Output the FULL improved lyrics. \n\n ${editableContent}`
+       });
+       if (response.text) {
+         setEditableContent(response.text);
+         setIsEditing(true); // Enter edit mode so user can see changes
+       }
+    } catch (e) {
+      console.error("Magic Fix Error", e);
+      const err = wrapGenAIError(e);
+      alert(`Optimization Failed: ${err.message}`);
+    } finally {
+      setIsFixingRhyme(false);
     }
   };
 
@@ -231,8 +263,9 @@ export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: stri
         setAudioStatus('IDLE');
       }
     } catch (e) {
+      const err = wrapGenAIError(e);
       console.error("TTS Error", e);
-      alert("Failed to generate audio. Please try again.");
+      alert(`TTS Failed: ${err.message}`);
       setAudioStatus('IDLE');
     }
   };
@@ -240,25 +273,47 @@ export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: stri
   return (
     <div className="relative group/renderer">
       {/* Top Action Bar */}
-      <div className="flex items-center justify-between mb-6 pb-4 border-b border-border">
-         <div className="flex gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 pb-4 border-b border-border gap-4 sm:gap-0">
+         <div className="flex gap-2 items-center flex-wrap">
             <ActionButton 
               icon={<Eye />} 
-              label="Preview" 
-              onClick={() => setViewMode('PRETTY')} 
-              active={viewMode === 'PRETTY'}
+              label="Visual" 
+              onClick={() => { setViewMode('PRETTY'); setIsEditing(false); }} 
+              active={viewMode === 'PRETTY' && !isEditing}
+            />
+            <ActionButton 
+              icon={isEditing ? <Save /> : <Edit3 />} 
+              label={isEditing ? "Save Edits" : "Studio Mode"} 
+              onClick={() => {
+                if (isEditing) {
+                   setIsEditing(false); // Save happens automatically via state
+                } else {
+                   setViewMode('PRETTY'); // Ensure we are in visual mode underlying
+                   setIsEditing(true);
+                }
+              }}
+              active={isEditing}
+              title="Edit lyrics manually"
             />
             {sunoContent && (
               <ActionButton 
                 icon={<FileCode />} 
                 label="Suno Code" 
-                onClick={() => setViewMode('SUNO')} 
+                onClick={() => { setViewMode('SUNO'); setIsEditing(false); }} 
                 active={viewMode === 'SUNO'}
               />
             )}
          </div>
          
          <div className="flex gap-2">
+            {!isEditing && viewMode === 'PRETTY' && (
+               <ActionButton 
+                 icon={isFixingRhyme ? <Loader2 className="animate-spin" /> : <Wand2 />}
+                 label="Magic Rhymes"
+                 onClick={handleMagicRhymeFix}
+                 disabled={isFixingRhyme || !apiKey}
+               />
+            )}
             <ActionButton 
               icon={
                 audioStatus === 'GENERATING' ? <Loader2 className="animate-spin" /> : 
@@ -285,7 +340,7 @@ export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: stri
           </div>
 
           {/* Metadata Card */}
-          {(metadata.title || metadata.music || metadata.taalam) && (
+          {!isEditing && (metadata.title || metadata.music || metadata.taalam) && (
             <div className="mb-8 p-5 rounded-xl bg-secondary/30 border border-border/50 backdrop-blur-sm relative overflow-hidden group hover:border-primary/20 transition-colors">
               <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
               
@@ -325,41 +380,55 @@ export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: stri
           )}
           
           {/* Lyrics Content */}
-          <div className="space-y-1 px-1">
-            {lyricsLines.map((line, i) => {
-              const trimmed = line.trim();
-              const isSectionHeader = trimmed.startsWith('[') && trimmed.endsWith(']') 
-                && (trimmed.includes("Verse") || trimmed.includes("Chorus") || trimmed.includes("Bridge") || trimmed.includes("Intro") || trimmed.includes("Outro") || trimmed.includes("Hook"));
+          {isEditing ? (
+            <div className="relative animate-slideIn">
+              <textarea 
+                value={editableContent}
+                onChange={(e) => setEditableContent(e.target.value)}
+                className="w-full h-[60vh] p-6 bg-card rounded-xl border border-primary/50 focus:ring-2 focus:ring-primary/20 outline-none font-mono text-sm leading-loose resize-none shadow-inner"
+                spellCheck={false}
+              />
+              <div className="absolute bottom-4 right-4 bg-background/80 backdrop-blur px-3 py-1 rounded-full border border-border text-xs text-muted-foreground">
+                Studio Mode Active
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-1 px-1">
+              {lyricsLines.map((line, i) => {
+                const trimmed = line.trim();
+                const isSectionHeader = trimmed.startsWith('[') && trimmed.endsWith(']') 
+                  && (trimmed.includes("Verse") || trimmed.includes("Chorus") || trimmed.includes("Bridge") || trimmed.includes("Intro") || trimmed.includes("Outro") || trimmed.includes("Hook"));
 
-              if (isSectionHeader) {
+                if (isSectionHeader) {
+                  return (
+                    <div key={i} className="mt-8 mb-4 flex items-center gap-4 select-none group/header">
+                       <h4 className="text-primary font-cinema text-xs font-bold uppercase tracking-[0.25em] border-b-2 border-primary/20 pb-1 group-hover/header:border-primary/50 transition-colors">
+                          {trimmed.replace(/[\[\]]/g, '')}
+                       </h4>
+                       <div className="h-px flex-1 bg-gradient-to-r from-primary/20 to-transparent" />
+                    </div>
+                  );
+                }
+                
+                if (!trimmed) return <div key={i} className="h-3" />;
+                
                 return (
-                  <div key={i} className="mt-8 mb-4 flex items-center gap-4 select-none group/header">
-                     <h4 className="text-primary font-cinema text-xs font-bold uppercase tracking-[0.25em] border-b-2 border-primary/20 pb-1 group-hover/header:border-primary/50 transition-colors">
-                        {trimmed.replace(/[\[\]]/g, '')}
-                     </h4>
-                     <div className="h-px flex-1 bg-gradient-to-r from-primary/20 to-transparent" />
-                  </div>
+                  <p key={i} className="text-lg text-foreground/90 leading-relaxed hover:text-foreground transition-colors cursor-text selection:bg-primary/20 selection:text-primary pl-1">
+                    {renderStyledLine(line)}
+                  </p>
                 );
-              }
-              
-              if (!trimmed) return <div key={i} className="h-3" />;
-              
-              return (
-                <p key={i} className="text-lg text-foreground/90 leading-relaxed hover:text-foreground transition-colors cursor-text selection:bg-primary/20 selection:text-primary pl-1">
-                  {renderStyledLine(line)}
-                </p>
-              );
-            })}
-          </div>
+              })}
+            </div>
+          )}
         </div>
       ) : (
-        <div className="font-mono text-sm relative">
+        <div className="font-mono text-sm relative animate-slideIn">
           <div className="bg-slate-950 text-slate-300 p-6 rounded-xl border border-slate-800 shadow-inner overflow-x-auto relative">
             <div className="absolute top-0 right-0 px-3 py-1.5 bg-slate-900 rounded-bl-lg text-[10px] text-slate-500 font-bold border-l border-b border-slate-800">
                SUNO V3.5
             </div>
             <pre className="whitespace-pre-wrap selection:bg-slate-700">
-              {sunoContent}
+              {sunoContent || "No Suno format available."}
             </pre>
           </div>
           <p className="text-[11px] text-muted-foreground mt-3 flex items-center gap-1.5 opacity-80">

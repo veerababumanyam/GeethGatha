@@ -2,6 +2,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { MODEL_NAME, SYSTEM_INSTRUCTION_CHAT } from "../config";
 import { Message } from "../types";
+import { wrapGenAIError } from "../utils";
 
 // Define Part type locally to ensure type safety without depending on specific SDK exports
 type Part = { text: string } | { inlineData: { mimeType: string; data: string } };
@@ -120,7 +121,7 @@ export const runChatAgent = async (
       return retryResponse.text || "I apologize, I'm having trouble connecting to the muse right now.";
     } catch (retryError) {
       console.error("Chat Agent retry failed:", retryError);
-      throw new Error("Failed to generate response. Please check your API Key.");
+      throw wrapGenAIError(retryError);
     }
   }
 };

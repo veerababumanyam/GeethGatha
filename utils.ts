@@ -1,6 +1,38 @@
 
-
 import { GeneratedLyrics } from "./types";
+
+/**
+ * Custom Error class for categorized AI failures
+ */
+export class GeminiError extends Error {
+  constructor(message: string, public type: 'AUTH' | 'QUOTA' | 'SERVER' | 'NETWORK' | 'UNKNOWN') {
+    super(message);
+    this.name = 'GeminiError';
+  }
+}
+
+/**
+ * Helper to wrap raw GoogleGenAI errors into categorized GeminiErrors
+ */
+export const wrapGenAIError = (error: any): GeminiError => {
+  console.error("GenAI Original Error:", error);
+  const msg = (error?.message || error?.toString() || "").toLowerCase();
+  
+  if (msg.includes("api key") || msg.includes("403") || msg.includes("unauthenticated") || msg.includes("key not valid")) {
+    return new GeminiError("Invalid API Key. Please check your settings.", 'AUTH');
+  }
+  if (msg.includes("429") || msg.includes("quota") || msg.includes("exhausted")) {
+    return new GeminiError("Usage limit exceeded. Please try again later.", 'QUOTA');
+  }
+  if (msg.includes("503") || msg.includes("overloaded") || msg.includes("500")) {
+    return new GeminiError("AI Service is currently overloaded. Please retry.", 'SERVER');
+  }
+  if (msg.includes("fetch") || msg.includes("network") || msg.includes("failed to fetch")) {
+    return new GeminiError("Network connection failed. Check your internet.", 'NETWORK');
+  }
+  
+  return new GeminiError("Something went wrong. Please try again.", 'UNKNOWN');
+};
 
 /**
  * safely parses JSON from LLM responses, handling Markdown code blocks.

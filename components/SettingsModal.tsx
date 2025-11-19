@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect } from "react";
-import { X, Type, Palette, Sparkles, Check, Loader2, Undo2, Key, ShieldAlert, Eye, EyeOff, ExternalLink, HelpCircle } from "lucide-react";
+import { X, Type, Palette, Sparkles, Check, Loader2, Undo2, Key, ShieldAlert, Eye, EyeOff, ExternalLink, HelpCircle, Wifi, CheckCircle2, AlertCircle } from "lucide-react";
 import { AppearanceSettings, AppTheme } from "../types";
 import { runThemeAgent } from "../agents/theme";
 import { DEFAULT_THEMES } from "../config";
+import { GoogleGenAI } from "@google/genai";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -22,9 +23,13 @@ export const SettingsModal = ({ isOpen, onClose, settings, onUpdateSettings, api
   // API Key State
   const [tempKey, setTempKey] = useState(apiKey);
   const [showKey, setShowKey] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
+  const [statusMessage, setStatusMessage] = useState("");
 
   useEffect(() => {
     setTempKey(apiKey);
+    setConnectionStatus('idle');
+    setStatusMessage("");
   }, [apiKey, isOpen]);
 
   if (!isOpen) return null;
@@ -60,10 +65,47 @@ export const SettingsModal = ({ isOpen, onClose, settings, onUpdateSettings, api
     setIsGenerating(false);
   };
 
+  const testConnection = async (): Promise<boolean> => {
+    if (!tempKey) return false;
+    setConnectionStatus('testing');
+    try {
+       const ai = new GoogleGenAI({ apiKey: tempKey });
+       await ai.models.generateContent({
+         model: "gemini-2.5-flash",
+         contents: "Test connection.",
+       });
+       setConnectionStatus('success');
+       setStatusMessage("Verified! Connection successful.");
+       
+       // Auto-save on success
+       setTimeout(() => {
+          onUpdateApiKey(tempKey);
+       }, 500);
+       return true;
+    } catch (e: any) {
+       setConnectionStatus('error');
+       const msg = e.message.toLowerCase();
+       if (msg.includes('403') || msg.includes('api key') || msg.includes('unauthenticated')) {
+         setStatusMessage("Invalid API Key. Please check carefully.");
+       } else if (msg.includes('fetch')) {
+         setStatusMessage("Network error. Check internet connection.");
+       } else {
+         setStatusMessage("Connection failed. Please try again.");
+       }
+       return false;
+    }
+  };
+
   const handleSaveKey = () => {
-    onUpdateApiKey(tempKey);
-    // Visual feedback could be added here
-    if (tempKey) onClose();
+    if (connectionStatus === 'success') {
+        onUpdateApiKey(tempKey);
+        onClose();
+    } else {
+        testConnection().then((success) => {
+            // If test passes after explicit save click, close modal
+            if (success) onClose();
+        });
+    }
   };
 
   const currentTheme = [...DEFAULT_THEMES, ...settings.customThemes].find(t => t.id === settings.themeId) || DEFAULT_THEMES[0];
@@ -220,7 +262,10 @@ export const SettingsModal = ({ isOpen, onClose, settings, onUpdateSettings, api
                       <input 
                         type={showKey ? "text" : "password"}
                         value={tempKey}
-                        onChange={(e) => setTempKey(e.target.value)}
+                        onChange={(e) => {
+                          setTempKey(e.target.value);
+                          setConnectionStatus('idle');
+                        }}
                         placeholder="AIzaSy..."
                         className="w-full bg-[var(--bg-sidebar)] border border-[var(--border)] rounded-lg p-3 pr-12 outline-none focus:border-[var(--accent)] transition-colors font-mono text-sm shadow-inner"
                       />
@@ -232,10 +277,43 @@ export const SettingsModal = ({ isOpen, onClose, settings, onUpdateSettings, api
                         {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
+                    
+                    {/* Connection Status Feedback */}
+                    {connectionStatus !== 'idle' && (
+                        <div className={`flex items-center gap-2 text-xs font-medium mt-2 px-1 animate-slideIn ${
+                            connectionStatus === 'success' ? 'text-green-500' : 
+                            connectionStatus === 'error' ? 'text-red-500' : 'text-[var(--text-secondary)]'
+                        }`}>
+                            {connectionStatus === 'testing' && <Loader2 className="w-3 h-3 animate-spin" />}
+                            {connectionStatus === 'success' && <CheckCircle2 className="w-3 h-3" />}
+                            {connectionStatus === 'error' && <AlertCircle className="w-3 h-3" />}
+                            <span>{statusMessage || "Checking connection..."}</span>
+                        </div>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center justify-between pt-2 gap-4">
+                     <button 
+                       onClick={() => testConnection()}
+                       disabled={!tempKey || connectionStatus === 'testing'}
+                       className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-[var(--text-main)] bg-[var(--bg-sidebar)] border border-[var(--border)] rounded-lg hover:bg-[var(--bg-main)] transition-colors disabled:opacity-50"
+                     >
+                       {connectionStatus === 'testing' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wifi className="w-4 h-4" />}
+                       Test Connection
+                     </button>
+
+                     <button 
+                      onClick={handleSaveKey}
+                      disabled={!tempKey}
+                      className="bg-[var(--accent)] text-[var(--accent-text)] px-8 py-2.5 rounded-lg font-bold hover:brightness-110 transition-all shadow-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Save Key
+                    </button>
                   </div>
 
                   {/* Beginner Guide */}
-                  <div className="bg-[var(--bg-sidebar)]/50 rounded-xl p-4 border border-[var(--border)] text-sm space-y-3">
+                  <div className="bg-[var(--bg-sidebar)]/50 rounded-xl p-4 border border-[var(--border)] text-sm space-y-3 mt-4">
                      <h4 className="font-semibold flex items-center gap-2">
                        <span className="flex items-center justify-center w-5 h-5 rounded-full bg-[var(--accent)] text-[var(--accent-text)] text-xs font-bold">?</span>
                        How to get your Free Key
@@ -247,18 +325,8 @@ export const SettingsModal = ({ isOpen, onClose, settings, onUpdateSettings, api
                        <li>Click the blue <strong>"Create API Key"</strong> button.</li>
                        <li>Select your project or create a new one.</li>
                        <li>Copy the code that looks like <code className="bg-[var(--bg-sidebar)] px-1 py-0.5 rounded border border-[var(--border)] text-xs">AIzaSy...</code></li>
-                       <li>Paste it in the box above and click <strong>Save Key</strong>.</li>
+                       <li>Paste it in the box above and click <strong>Test Connection</strong>.</li>
                      </ol>
-                  </div>
-
-                  <div className="pt-2 flex justify-end">
-                    <button 
-                      onClick={handleSaveKey}
-                      disabled={!tempKey}
-                      className="bg-[var(--accent)] text-[var(--accent-text)] px-8 py-2.5 rounded-lg font-bold hover:brightness-110 transition-all shadow-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Save Key
-                    </button>
                   </div>
                 </div>
             </section>
@@ -268,3 +336,4 @@ export const SettingsModal = ({ isOpen, onClose, settings, onUpdateSettings, api
     </div>
   );
 };
+    

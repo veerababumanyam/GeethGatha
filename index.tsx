@@ -9,8 +9,8 @@ import {
 import { AgentType, Message, LanguageProfile, GenerationSettings, AppearanceSettings, AppTheme } from "./types";
 import { runChatAgent } from "./agents/chat";
 import { useOrchestrator } from "./hooks/useOrchestrator";
-import { getLanguageCode } from "./utils";
-import { DEFAULT_THEMES } from "./config";
+import { getLanguageCode, GeminiError } from "./utils";
+import { DEFAULT_THEMES, SUGGESTION_CHIPS } from "./config";
 import "./global.css";
 
 // Component Imports
@@ -18,6 +18,7 @@ import { Sidebar } from "./components/Sidebar";
 import { WorkflowStatus } from "./components/WorkflowStatus";
 import { LyricsRenderer } from "./components/LyricsRenderer";
 import { SettingsModal } from "./components/SettingsModal";
+import { MoodBackground } from "./components/MoodBackground";
 
 // --- Helpers ---
 const renderAgentIcon = (agent?: AgentType) => {
@@ -237,10 +238,25 @@ const App = () => {
 
     const isSongRequest = /write|compose|song|lyrics|create|about/i.test(userText) && userText.length > 10;
 
-    if (isSongRequest) {
-      await runSongGenerationWorkflow(userText, languageSettings, genSettings, addMessage, apiKey);
-    } else {
-      await runChatWorkflow(userText);
+    try {
+      if (isSongRequest) {
+        await runSongGenerationWorkflow(userText, languageSettings, genSettings, addMessage, apiKey);
+      } else {
+        await runChatWorkflow(userText);
+      }
+    } catch (error: any) {
+      // Catch AUTH errors that bubbled up from workflows
+      if (error.name === 'GeminiError' && error.type === 'AUTH') {
+        setIsSettingsOpen(true);
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          role: "system",
+          content: "🚫 Your API Key seems invalid. Please check settings.",
+          timestamp: new Date()
+        }]);
+      } else {
+        addErrorMessage(error.message);
+      }
     }
   };
 
@@ -265,19 +281,22 @@ const App = () => {
           timestamp: new Date(),
         },
       ]);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Chat Error:", error);
-      addErrorMessage();
+      if (error.name === 'GeminiError' && error.type === 'AUTH') {
+        throw error; // Re-throw to processUserMessage to open settings
+      }
+      addErrorMessage(error.message || "Connection failed.");
     } finally {
       setAgentStatus({ active: false, currentAgent: "CHAT", message: "Ready", steps: [] });
     }
   };
 
-  const addErrorMessage = () => {
+  const addErrorMessage = (msg: string = "I encountered a connection issue. Please check your API Key in settings.") => {
     setMessages(prev => [...prev, {
       id: Date.now().toString(),
       role: "system",
-      content: "I encountered a connection issue. Please check your API Key in settings.",
+      content: msg,
       timestamp: new Date()
     }]);
   };
@@ -312,9 +331,23 @@ const App = () => {
 
     recognitionRef.current.start();
   };
+  
+  // Get correct suggestion chips based on last interaction
+  const getSuggestions = () => {
+    if (messages.length > 0) {
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg.senderAgent === 'ORCHESTRATOR') return SUGGESTION_CHIPS['lyrics_generated'];
+    }
+    if (genSettings.category === 'love_romance') return SUGGESTION_CHIPS['love_romance'];
+    if (genSettings.category === 'cinematic') return SUGGESTION_CHIPS['cinematic'];
+    return SUGGESTION_CHIPS['default'];
+  };
 
   return (
-    <div className="flex h-screen bg-background text-foreground overflow-hidden font-telugu transition-colors duration-300">
+    <div className="flex h-screen bg-background text-foreground overflow-hidden font-telugu transition-colors duration-300 relative">
+      
+      {/* --- Dynamic Background Engine --- */}
+      <MoodBackground mood={genSettings.mood} />
       
       <Sidebar 
         isOpen={isSidebarOpen} 
@@ -337,9 +370,9 @@ const App = () => {
       />
 
       {/* --- Main Chat Area --- */}
-      <div className="flex-1 flex flex-col h-full relative">
+      <div className="flex-1 flex flex-col h-full relative z-10">
         {/* Header */}
-        <header className="h-16 border-b border-border flex items-center justify-between px-6 glass-panel z-10 transition-colors">
+        <header className="h-16 border-b border-border/40 flex items-center justify-between px-6 glass-panel z-20 transition-colors">
           <div className="flex items-center gap-4">
             <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden text-muted-foreground hover:text-foreground">
               <Menu className="w-6 h-6" />
@@ -390,8 +423,8 @@ const App = () => {
               {/* Avatar */}
               <div 
                 className={`
-                  w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center shadow-lg border border-border
-                  ${msg.role === "user" ? "bg-secondary text-secondary-foreground" : "bg-card text-primary"}
+                  w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center shadow-lg border border-border/50 backdrop-blur-md
+                  ${msg.role === "user" ? "bg-secondary/80 text-secondary-foreground" : "bg-card/80 text-primary"}
                 `}
               >
                 {msg.role === "user" ? (
@@ -402,7 +435,7 @@ const App = () => {
               </div>
 
               {/* Bubble */}
-              <div className={`max-w-[85%] lg:max-w-[70%]`}>
+              <div className={`max-w-[95%] lg:max-w-[75%] relative group`}>
                  <div className="flex items-center gap-2 mb-1">
                     <span 
                       className={`text-xs font-bold uppercase tracking-wider ${msg.role === "user" ? "ml-auto text-muted-foreground" : "text-primary"}`}
@@ -416,9 +449,10 @@ const App = () => {
 
                  <div 
                    className={`
-                     p-4 rounded-2xl shadow-sm text-sm leading-relaxed whitespace-pre-wrap transition-colors duration-300
-                     border ${msg.senderAgent === "ORCHESTRATOR" ? "border-primary/50" : "border-border"}
-                     ${msg.role === "user" ? "bg-secondary text-secondary-foreground" : "bg-card text-card-foreground"}
+                     p-4 rounded-2xl shadow-sm text-sm leading-relaxed whitespace-pre-wrap transition-all duration-300
+                     border backdrop-blur-md
+                     ${msg.senderAgent === "ORCHESTRATOR" ? "border-primary/30 bg-card/80" : "border-border/50"}
+                     ${msg.role === "user" ? "bg-secondary/80 text-secondary-foreground" : "bg-card/90 text-card-foreground"}
                    `}
                    style={{
                      borderTopRightRadius: msg.role === "user" ? 0 : '1rem',
@@ -454,46 +488,64 @@ const App = () => {
         </div>
 
         {/* Input Area */}
-        <div className="p-4 lg:p-6 bg-background border-t border-border z-20 transition-colors duration-300">
-          <div className="max-w-4xl mx-auto relative flex items-end gap-3 bg-card p-2 rounded-xl border border-border shadow-lg transition-colors">
-            <button 
-              onClick={toggleRecording}
-              className={`p-3 rounded-lg transition-all ${isRecording ? "bg-destructive/10 text-destructive animate-pulse" : "hover:bg-accent text-muted-foreground"}`}
-              title="Voice Input"
-            >
-              {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-            </button>
-            
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  if (input.trim() && !agentStatus.active) processUserMessage(input);
-                }
-              }}
-              placeholder={apiKey ? "Describe the scene, mood, or hum a tune..." : "Please connect your API Key in settings..."}
-              disabled={!apiKey && !process.env.API_KEY}
-              className="flex-1 bg-transparent border-none focus:ring-0 text-foreground placeholder-muted-foreground resize-none max-h-32 py-3 text-sm overflow-y-auto disabled:cursor-not-allowed"
-              rows={1}
-            />
+        <div className="p-4 lg:p-6 border-t border-border/30 z-20 transition-colors duration-300 bg-background/60 backdrop-blur-md">
+          <div className="max-w-4xl mx-auto">
+             
+             {/* Suggestion Chips */}
+             {!agentStatus.active && (
+               <div className="flex gap-2 mb-3 overflow-x-auto scrollbar-hide pb-1">
+                 {getSuggestions().map((sug, i) => (
+                   <button
+                     key={i}
+                     onClick={() => processUserMessage(sug)}
+                     className="text-[10px] whitespace-nowrap px-3 py-1.5 rounded-full bg-secondary/50 border border-border hover:bg-primary/10 hover:border-primary hover:text-primary transition-all backdrop-blur-sm font-medium text-muted-foreground"
+                   >
+                     <Sparkles className="w-2.5 h-2.5 inline mr-1" /> {sug}
+                   </button>
+                 ))}
+               </div>
+             )}
 
-            <button 
-              onClick={() => {
-                if (input.trim() && !agentStatus.active) processUserMessage(input);
-              }}
-              disabled={!input.trim() || agentStatus.active || (!apiKey && !process.env.API_KEY)}
-              className="p-3 rounded-lg bg-primary text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:brightness-110"
-            >
-              <Send className="w-5 h-5" />
-            </button>
-          </div>
-          <div className="text-center mt-2">
-            <p className="text-[10px] text-muted-foreground">
-              AI-generated content can be inaccurate. Please review.
-            </p>
+             <div className="relative flex items-end gap-3 bg-card/80 p-2 rounded-xl border border-border shadow-lg transition-colors backdrop-blur-md">
+              <button 
+                onClick={toggleRecording}
+                className={`p-3 rounded-lg transition-all ${isRecording ? "bg-destructive/10 text-destructive animate-pulse" : "hover:bg-accent text-muted-foreground"}`}
+                title="Voice Input"
+              >
+                {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+              </button>
+              
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    if (input.trim() && !agentStatus.active) processUserMessage(input);
+                  }
+                }}
+                placeholder={apiKey ? "Describe the scene, mood, or hum a tune..." : "Please connect your API Key in settings..."}
+                disabled={!apiKey && !process.env.API_KEY}
+                className="flex-1 bg-transparent border-none focus:ring-0 text-foreground placeholder-muted-foreground resize-none max-h-32 py-3 text-sm overflow-y-auto disabled:cursor-not-allowed"
+                rows={1}
+              />
+
+              <button 
+                onClick={() => {
+                  if (input.trim() && !agentStatus.active) processUserMessage(input);
+                }}
+                disabled={!input.trim() || agentStatus.active || (!apiKey && !process.env.API_KEY)}
+                className="p-3 rounded-lg bg-primary text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:brightness-110"
+              >
+                <Send className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="text-center mt-2">
+              <p className="text-[10px] text-muted-foreground opacity-70">
+                AI-generated content can be inaccurate. Please review.
+              </p>
+            </div>
           </div>
         </div>
       </div>
