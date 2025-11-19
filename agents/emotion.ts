@@ -4,8 +4,11 @@ import { MODEL_NAME, SYSTEM_INSTRUCTION_EMOTION } from "../config";
 import { EmotionAnalysis } from "../types";
 import { cleanAndParseJSON } from "../utils";
 
-export const runEmotionAgent = async (input: string): Promise<EmotionAnalysis> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+export const runEmotionAgent = async (input: string, apiKey?: string): Promise<EmotionAnalysis> => {
+  const key = apiKey || process.env.API_KEY;
+  if (!key) throw new Error("API Key is missing");
+
+  const ai = new GoogleGenAI({ apiKey: key });
 
   const emotionSchema = {
     type: Type.OBJECT,

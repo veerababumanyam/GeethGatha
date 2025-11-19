@@ -38,7 +38,6 @@ const getDynamicInstruction = (history: Message[], currentInput: string) => {
   const lowerInput = currentInput.toLowerCase();
 
   // 1. Context: Feedback on Lyrics
-  // Check if the previous model message contained lyrics data
   const lastModelMsg = [...history].reverse().find(m => m.role === "model");
   if (lastModelMsg?.lyricsData) {
     instruction += `\n\n[CONTEXT: POST-GENERATION]\nThe user is discussing the lyrics you just helped orchestrate.
@@ -60,9 +59,13 @@ const getDynamicInstruction = (history: Message[], currentInput: string) => {
 export const runChatAgent = async (
   text: string, 
   history: Message[], 
-  options?: ChatAgentOptions
+  options: ChatAgentOptions | undefined,
+  apiKey?: string
 ) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const key = apiKey || process.env.API_KEY;
+  if (!key) throw new Error("API Key is missing. Please configure it in settings.");
+
+  const ai = new GoogleGenAI({ apiKey: key });
 
   // 1. Optimize Context
   const chatHistory = getOptimizedHistory(history);
@@ -117,7 +120,7 @@ export const runChatAgent = async (
       return retryResponse.text || "I apologize, I'm having trouble connecting to the muse right now.";
     } catch (retryError) {
       console.error("Chat Agent retry failed:", retryError);
-      throw new Error("Failed to generate response.");
+      throw new Error("Failed to generate response. Please check your API Key.");
     }
   }
 };

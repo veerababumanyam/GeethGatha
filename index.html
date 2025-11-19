@@ -1,20 +1,60 @@
-
 <!DOCTYPE html>
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GeetGatha - AI Lyricist</title>
+    <title>SWAZ eLyrics - AI Lyricist</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
         darkMode: 'class',
         theme: {
           extend: {
+            colors: {
+              background: "hsl(var(--background))",
+              foreground: "hsl(var(--foreground))",
+              card: {
+                DEFAULT: "hsl(var(--card))",
+                foreground: "hsl(var(--card-foreground))"
+              },
+              popover: {
+                DEFAULT: "hsl(var(--popover))",
+                foreground: "hsl(var(--popover-foreground))"
+              },
+              primary: {
+                DEFAULT: "hsl(var(--primary))",
+                foreground: "hsl(var(--primary-foreground))"
+              },
+              secondary: {
+                DEFAULT: "hsl(var(--secondary))",
+                foreground: "hsl(var(--secondary-foreground))"
+              },
+              muted: {
+                DEFAULT: "hsl(var(--muted))",
+                foreground: "hsl(var(--muted-foreground))"
+              },
+              accent: {
+                DEFAULT: "hsl(var(--accent))",
+                foreground: "hsl(var(--accent-foreground))"
+              },
+              destructive: {
+                DEFAULT: "hsl(var(--destructive))",
+                foreground: "hsl(var(--destructive-foreground))"
+              },
+              border: "hsl(var(--border))",
+              input: "hsl(var(--input))",
+              ring: "hsl(var(--ring))",
+            },
+            borderRadius: {
+              lg: "var(--radius)",
+              md: "calc(var(--radius) - 2px)",
+              sm: "calc(var(--radius) - 4px)",
+            },
             fontFamily: {
               'telugu': ['"Noto Sans Telugu"', 'sans-serif'],
               'serif-telugu': ['"Noto Serif Telugu"', 'serif'],
               'cinema': ['"Playfair Display"', 'serif'],
+              'sans': ['"Outfit"', 'sans-serif'],
             }
           }
         }
@@ -25,22 +65,70 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+Telugu:wght@400;500;700&family=Noto+Serif+Telugu:wght@400;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
     <style>
       :root {
-        /* Base Theme Variables (Defaults) */
-        --bg-main: #f8fafc;
-        --bg-sidebar: #ffffff;
-        --text-main: #0f172a;
-        --text-secondary: #64748b;
-        --accent: #f59e0b;
-        --accent-text: #0f172a;
-        --border: #e2e8f0;
+        --background: 0 0% 100%;
+        --foreground: 222.2 84% 4.9%;
+        --card: 0 0% 100%;
+        --card-foreground: 222.2 84% 4.9%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 222.2 84% 4.9%;
+        --primary: 221.2 83.2% 53.3%;
+        --primary-foreground: 210 40% 98%;
+        --secondary: 210 40% 96.1%;
+        --secondary-foreground: 222.2 47.4% 11.2%;
+        --muted: 210 40% 96.1%;
+        --muted-foreground: 215.4 16.3% 46.9%;
+        --accent: 210 40% 96.1%;
+        --accent-foreground: 222.2 47.4% 11.2%;
+        --destructive: 0 84.2% 60.2%;
+        --destructive-foreground: 210 40% 98%;
+        --border: 214.3 31.8% 91.4%;
+        --input: 214.3 31.8% 91.4%;
+        --ring: 221.2 83.2% 53.3%;
+        --radius: 0.75rem;
       }
       
-      body {
-        font-family: 'Outfit', sans-serif;
-        background-color: var(--bg-main);
-        color: var(--text-main);
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 3.9%;
+        --card-foreground: 0 0% 98%;
+        --popover: 240 10% 3.9%;
+        --popover-foreground: 0 0% 98%;
+        --primary: 260 70% 60%;
+        --primary-foreground: 210 40% 98%;
+        --secondary: 217.2 32.6% 17.5%;
+        --secondary-foreground: 210 40% 98%;
+        --muted: 217.2 32.6% 17.5%;
+        --muted-foreground: 215 20.2% 65.1%;
+        --accent: 217.2 32.6% 17.5%;
+        --accent-foreground: 210 40% 98%;
+        --destructive: 0 62.8% 30.6%;
+        --destructive-foreground: 210 40% 98%;
+        --border: 217.2 32.6% 17.5%;
+        --input: 217.2 32.6% 17.5%;
+        --ring: 260 70% 60%;
       }
 
+      body {
+        font-family: 'Outfit', sans-serif;
+        background-color: hsl(var(--background));
+        color: hsl(var(--foreground));
+      }
+
+      /* Custom Utilities */
+      .glass-panel {
+        background-color: hsla(var(--background), 0.6);
+        backdrop-filter: blur(16px);
+        border: 1px solid hsla(0, 0%, 100%, 0.1);
+      }
+      
+      .text-gradient {
+        background-clip: text;
+        -webkit-background-clip: text;
+        color: transparent;
+        background-image: linear-gradient(to right, hsl(var(--primary)), #c084fc, #22d3ee);
+      }
+      
       /* Custom Scrollbar */
       ::-webkit-scrollbar {
         width: 6px;
@@ -49,12 +137,12 @@
         background: transparent; 
       }
       ::-webkit-scrollbar-thumb {
-        background: var(--text-secondary); 
+        background: hsl(var(--muted-foreground)); 
         border-radius: 3px;
         opacity: 0.5;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: var(--accent); 
+        background: hsl(var(--primary)); 
       }
       
       .animate-pulse-slow {

@@ -62,6 +62,11 @@ export interface LanguageProfile {
 }
 
 export interface GenerationSettings {
+  // Contextual Engine
+  category: string; // e.g., "Wedding", "Milestone"
+  ceremony: string; // e.g., "Thalambralu", "Sasti Purthi"
+  
+  // Fallbacks/Overlays
   theme: string;
   customTheme: string;
   mood: string;
@@ -71,7 +76,7 @@ export interface GenerationSettings {
   complexity: "Simple" | "Poetic" | "Complex";
   rhymeScheme: string;
   customRhymeScheme: string;
-  singerConfig: string; // New field for Singer Voice Configuration
+  singerConfig: string;
 }
 
 export interface SavedProfile {

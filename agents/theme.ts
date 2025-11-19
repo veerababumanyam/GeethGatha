@@ -4,8 +4,11 @@ import { MODEL_FAST, SYSTEM_INSTRUCTION_THEME } from "../config";
 import { AppTheme } from "../types";
 import { cleanAndParseJSON } from "../utils";
 
-export const runThemeAgent = async (description: string): Promise<AppTheme | null> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+export const runThemeAgent = async (description: string, apiKey?: string): Promise<AppTheme | null> => {
+  const key = apiKey || process.env.API_KEY;
+  if (!key) throw new Error("API Key is missing");
+
+  const ai = new GoogleGenAI({ apiKey: key });
 
   const themeSchema = {
     type: Type.OBJECT,

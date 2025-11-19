@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import {
-  Mic, Send, Menu, Globe, MoreVertical, MicOff, User, Bot, Feather, BookOpen, CheckCircle, Sparkles, Heart, ShieldCheck, Video, FileCode, Settings as SettingsIcon
+  Mic, Send, Menu, Globe, MoreVertical, MicOff, User, Bot, Feather, BookOpen, CheckCircle, Sparkles, Heart, ShieldCheck, Video, FileCode, Settings as SettingsIcon, Key
 } from "lucide-react";
 
 // Modular Imports
@@ -11,6 +11,7 @@ import { runChatAgent } from "./agents/chat";
 import { useOrchestrator } from "./hooks/useOrchestrator";
 import { getLanguageCode } from "./utils";
 import { DEFAULT_THEMES } from "./config";
+import "./global.css";
 
 // Component Imports
 import { Sidebar } from "./components/Sidebar";
@@ -29,8 +30,42 @@ const renderAgentIcon = (agent?: AgentType) => {
     case "MULTIMODAL": return <Video className="w-4 h-4 text-indigo-400" />;
     case "FORMATTER": return <FileCode className="w-4 h-4 text-cyan-400" />;
     case "ORCHESTRATOR": return <Sparkles className="w-4 h-4 text-purple-400" />;
-    default: return <Bot className="w-4 h-4 text-gray-400" />;
+    default: return <Bot className="w-4 h-4 text-muted-foreground" />;
   }
+};
+
+// --- Helper to convert hex to HSL for CSS vars ---
+const hexToHSL = (hex: string) => {
+  let r = 0, g = 0, b = 0;
+  if (hex.length === 4) {
+    r = parseInt("0x" + hex[1] + hex[1]);
+    g = parseInt("0x" + hex[2] + hex[2]);
+    b = parseInt("0x" + hex[3] + hex[3]);
+  } else if (hex.length === 7) {
+    r = parseInt("0x" + hex[1] + hex[2]);
+    g = parseInt("0x" + hex[3] + hex[4]);
+    b = parseInt("0x" + hex[5] + hex[6]);
+  }
+  r /= 255;
+  g /= 255;
+  b /= 255;
+  const cmin = Math.min(r, g, b), cmax = Math.max(r, g, b), delta = cmax - cmin;
+  let h = 0, s = 0, l = 0;
+
+  if (delta === 0) h = 0;
+  else if (cmax === r) h = ((g - b) / delta) % 6;
+  else if (cmax === g) h = (b - r) / delta + 2;
+  else h = (r - g) / delta + 4;
+
+  h = Math.round(h * 60);
+  if (h < 0) h += 360;
+
+  l = (cmax + cmin) / 2;
+  s = delta === 0 ? 0 : delta / (1 - Math.abs(2 * l - 1));
+  s = +(s * 100).toFixed(1);
+  l = +(l * 100).toFixed(1);
+
+  return `${h} ${s}% ${l}%`;
 };
 
 // --- Main App Orchestrator ---
@@ -40,7 +75,7 @@ const App = () => {
     {
       id: "welcome",
       role: "model",
-      content: "Namaste! I am GeetGatha. I can help you weave magic into words for your next melody. Tell me the situation, mood, or language you have in mind.",
+      content: "Namaste! I am SWAZ eLyrics. I can help you weave magic into words for your next melody. Tell me the situation, mood, or language you have in mind.",
       senderAgent: "CHAT",
       timestamp: new Date(),
     },
@@ -49,12 +84,34 @@ const App = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   
-  // Appearance State
-  const [appearance, setAppearance] = useState<AppearanceSettings>({
-    fontSize: 16,
-    themeId: "dark",
-    customThemes: []
+  // API Key Management - Initialize lazily from storage to prevent flash of "no key"
+  const [apiKey, setApiKey] = useState(() => {
+    return localStorage.getItem("gemini_api_key") || "";
   });
+
+  const handleUpdateApiKey = (key: string) => {
+    setApiKey(key);
+    if (key) {
+      localStorage.setItem("gemini_api_key", key);
+    } else {
+      localStorage.removeItem("gemini_api_key");
+    }
+  };
+  
+  // Appearance State with Persistence
+  const [appearance, setAppearance] = useState<AppearanceSettings>(() => {
+    const saved = localStorage.getItem("swaz_appearance");
+    return saved ? JSON.parse(saved) : {
+      fontSize: 16,
+      themeId: "swaz",
+      customThemes: []
+    };
+  });
+
+  const handleUpdateAppearance = (newSettings: AppearanceSettings) => {
+    setAppearance(newSettings);
+    localStorage.setItem("swaz_appearance", JSON.stringify(newSettings));
+  };
 
   // Complex Language State
   const [languageSettings, setLanguageSettings] = useState<LanguageProfile>({
@@ -65,6 +122,8 @@ const App = () => {
 
   // Detailed Generation Preferences
   const [genSettings, setGenSettings] = useState<GenerationSettings>({
+    category: "",
+    ceremony: "",
     theme: "Romance",
     customTheme: "",
     mood: "Romantic (Shringara)",
@@ -93,20 +152,31 @@ const App = () => {
 
     // 2. Find Current Theme
     const allThemes = [...DEFAULT_THEMES, ...appearance.customThemes];
-    const activeTheme = allThemes.find(t => t.id === appearance.themeId) || DEFAULT_THEMES[1]; // Default to Dark
+    const activeTheme = allThemes.find(t => t.id === appearance.themeId) || DEFAULT_THEMES[0];
 
-    // 3. Set CSS Variables
+    // 3. Set CSS Variables for Global Design
     if (activeTheme) {
-      root.style.setProperty('--bg-main', activeTheme.colors.bgMain);
-      root.style.setProperty('--bg-sidebar', activeTheme.colors.bgSidebar);
-      root.style.setProperty('--text-main', activeTheme.colors.textMain);
-      root.style.setProperty('--text-secondary', activeTheme.colors.textSecondary);
-      root.style.setProperty('--accent', activeTheme.colors.accent);
-      root.style.setProperty('--accent-text', activeTheme.colors.accentText);
-      root.style.setProperty('--border', activeTheme.colors.border);
-      
-      // Sync with Tailwind dark mode class if it's a dark theme
-      if (appearance.themeId === 'dark' || appearance.themeId === 'royal') {
+      // Map legacy AppTheme to new Shadcn HSL Variables
+      root.style.setProperty('--background', hexToHSL(activeTheme.colors.bgMain));
+      root.style.setProperty('--foreground', hexToHSL(activeTheme.colors.textMain));
+      root.style.setProperty('--card', hexToHSL(activeTheme.colors.bgSidebar));
+      root.style.setProperty('--card-foreground', hexToHSL(activeTheme.colors.textMain));
+      root.style.setProperty('--popover', hexToHSL(activeTheme.colors.bgSidebar));
+      root.style.setProperty('--popover-foreground', hexToHSL(activeTheme.colors.textMain));
+      root.style.setProperty('--primary', hexToHSL(activeTheme.colors.accent));
+      root.style.setProperty('--primary-foreground', hexToHSL(activeTheme.colors.accentText));
+      root.style.setProperty('--secondary', hexToHSL(activeTheme.colors.bgSidebar)); // fallback
+      root.style.setProperty('--secondary-foreground', hexToHSL(activeTheme.colors.textSecondary));
+      root.style.setProperty('--muted', hexToHSL(activeTheme.colors.border)); 
+      root.style.setProperty('--muted-foreground', hexToHSL(activeTheme.colors.textSecondary));
+      root.style.setProperty('--accent', hexToHSL(activeTheme.colors.border)); 
+      root.style.setProperty('--accent-foreground', hexToHSL(activeTheme.colors.textMain));
+      root.style.setProperty('--border', hexToHSL(activeTheme.colors.border));
+      root.style.setProperty('--input', hexToHSL(activeTheme.colors.border));
+      root.style.setProperty('--ring', hexToHSL(activeTheme.colors.accent));
+
+      // Sync with Tailwind dark mode class
+      if (appearance.themeId === 'dark' || appearance.themeId === 'royal' || appearance.themeId === 'swaz') {
         root.classList.add('dark');
       } else {
         root.classList.remove('dark');
@@ -150,6 +220,11 @@ const App = () => {
   };
 
   const processUserMessage = async (userText: string) => {
+    if (!apiKey && !process.env.API_KEY) {
+        setIsSettingsOpen(true);
+        return;
+    }
+
     const userMsg: Message = {
       id: Date.now().toString(),
       role: "user",
@@ -163,7 +238,7 @@ const App = () => {
     const isSongRequest = /write|compose|song|lyrics|create|about/i.test(userText) && userText.length > 10;
 
     if (isSongRequest) {
-      await runSongGenerationWorkflow(userText, languageSettings, genSettings, addMessage);
+      await runSongGenerationWorkflow(userText, languageSettings, genSettings, addMessage, apiKey);
     } else {
       await runChatWorkflow(userText);
     }
@@ -178,7 +253,7 @@ const App = () => {
     });
     
     try {
-      const responseText = await runChatAgent(text, messages);
+      const responseText = await runChatAgent(text, messages, undefined, apiKey);
 
       setMessages((prev) => [
         ...prev,
@@ -202,7 +277,7 @@ const App = () => {
     setMessages(prev => [...prev, {
       id: Date.now().toString(),
       role: "system",
-      content: "I encountered a musical block. Please try again.",
+      content: "I encountered a connection issue. Please check your API Key in settings.",
       timestamp: new Date()
     }]);
   };
@@ -239,7 +314,7 @@ const App = () => {
   };
 
   return (
-    <div className="flex h-screen bg-[var(--bg-main)] text-[var(--text-main)] overflow-hidden font-telugu transition-colors duration-300">
+    <div className="flex h-screen bg-background text-foreground overflow-hidden font-telugu transition-colors duration-300">
       
       <Sidebar 
         isOpen={isSidebarOpen} 
@@ -256,40 +331,50 @@ const App = () => {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         settings={appearance}
-        onUpdateSettings={setAppearance}
+        onUpdateSettings={handleUpdateAppearance}
+        apiKey={apiKey}
+        onUpdateApiKey={handleUpdateApiKey}
       />
 
       {/* --- Main Chat Area --- */}
       <div className="flex-1 flex flex-col h-full relative">
         {/* Header */}
-        <header className="h-16 border-b border-[var(--border)] flex items-center justify-between px-6 bg-[var(--bg-sidebar)]/80 backdrop-blur-sm z-10 transition-colors">
+        <header className="h-16 border-b border-border flex items-center justify-between px-6 glass-panel z-10 transition-colors">
           <div className="flex items-center gap-4">
-            <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden text-[var(--text-secondary)] hover:text-[var(--text-main)]">
+            <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden text-muted-foreground hover:text-foreground">
               <Menu className="w-6 h-6" />
             </button>
             <div>
-              <h2 className="text-lg font-medium text-[var(--text-main)]">Composition Studio</h2>
+              <h2 className="text-lg font-medium text-foreground">SWAZ eLyrics Studio</h2>
               <div className="flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full ${agentStatus.active ? 'bg-[var(--accent)] animate-pulse' : 'bg-green-500'}`}></span>
-                <span className="text-xs text-[var(--text-secondary)]">
+                <span className={`w-2 h-2 rounded-full ${agentStatus.active ? 'bg-primary animate-pulse' : 'bg-green-500'}`}></span>
+                <span className="text-xs text-muted-foreground">
                   {agentStatus.active ? "Orchestration Active" : "Ready for Input"}
                 </span>
               </div>
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {!apiKey && !process.env.API_KEY && (
+                <button 
+                    onClick={() => setIsSettingsOpen(true)}
+                    className="flex items-center gap-1 text-xs font-bold text-red-500 bg-red-500/10 px-3 py-1.5 rounded-full animate-pulse"
+                >
+                    <Key className="w-3 h-3" /> Set API Key
+                </button>
+            )}
             <button 
               onClick={() => setIsSettingsOpen(true)}
-              className="p-2 text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors flex items-center gap-2"
-              title="Appearance Settings"
+              className="p-2 text-muted-foreground hover:text-primary transition-colors flex items-center gap-2"
+              title="Settings"
             >
               <SettingsIcon className="w-5 h-5" />
               <span className="hidden sm:inline text-xs font-medium">Theme & Text</span>
             </button>
-            <button className="p-2 text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors" title="Language Settings">
+            <button className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Language Settings">
               <Globe className="w-5 h-5" />
             </button>
-            <button className="p-2 text-[var(--text-secondary)] hover:text-[var(--text-main)] transition-colors">
+            <button className="p-2 text-muted-foreground hover:text-foreground transition-colors">
               <MoreVertical className="w-5 h-5" />
             </button>
           </div>
@@ -305,12 +390,9 @@ const App = () => {
               {/* Avatar */}
               <div 
                 className={`
-                  w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center shadow-lg border border-[var(--border)]
+                  w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center shadow-lg border border-border
+                  ${msg.role === "user" ? "bg-secondary text-secondary-foreground" : "bg-card text-primary"}
                 `}
-                style={{ 
-                  backgroundColor: msg.role === "user" ? "var(--bg-sidebar)" : "var(--bg-sidebar)",
-                  color: msg.role === "user" ? "var(--text-secondary)" : "var(--accent)"
-                }}
               >
                 {msg.role === "user" ? (
                   <User className="w-5 h-5" />
@@ -323,25 +405,22 @@ const App = () => {
               <div className={`max-w-[85%] lg:max-w-[70%]`}>
                  <div className="flex items-center gap-2 mb-1">
                     <span 
-                      className="text-xs font-bold uppercase tracking-wider ml-auto" 
-                      style={{ color: msg.role === "user" ? "var(--text-secondary)" : "var(--accent)" }}
+                      className={`text-xs font-bold uppercase tracking-wider ${msg.role === "user" ? "ml-auto text-muted-foreground" : "text-primary"}`}
                     >
-                      {msg.role === "user" ? "You" : msg.senderAgent || "GeetGatha"}
+                      {msg.role === "user" ? "You" : msg.senderAgent || "SWAZ AI"}
                     </span>
-                    <span className="text-[10px]" style={{ color: "var(--text-secondary)" }}>
+                    <span className="text-[10px] text-muted-foreground">
                       {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                  </div>
 
                  <div 
                    className={`
-                     p-4 rounded-2xl shadow-xl text-sm leading-relaxed whitespace-pre-wrap transition-colors duration-300
-                     border
+                     p-4 rounded-2xl shadow-sm text-sm leading-relaxed whitespace-pre-wrap transition-colors duration-300
+                     border ${msg.senderAgent === "ORCHESTRATOR" ? "border-primary/50" : "border-border"}
+                     ${msg.role === "user" ? "bg-secondary text-secondary-foreground" : "bg-card text-card-foreground"}
                    `}
                    style={{
-                     backgroundColor: msg.role === "user" ? "var(--bg-sidebar)" : "var(--bg-sidebar)",
-                     borderColor: msg.senderAgent === "ORCHESTRATOR" ? "var(--accent)" : "var(--border)",
-                     color: "var(--text-main)",
                      borderTopRightRadius: msg.role === "user" ? 0 : '1rem',
                      borderTopLeftRadius: msg.role === "user" ? '1rem' : 0,
                    }}
@@ -349,9 +428,9 @@ const App = () => {
                    {/* Custom Render for Lyrics vs Standard Text */}
                    {msg.senderAgent === "ORCHESTRATOR" && msg.content.includes("[") ? (
                      <>
-                      <LyricsRenderer content={msg.content} sunoContent={msg.sunoFormattedContent} />
+                      <LyricsRenderer content={msg.content} sunoContent={msg.sunoFormattedContent} apiKey={apiKey} />
                       {msg.complianceReport && (
-                        <div className="mt-4 pt-4 border-t border-[var(--border)] text-xs font-mono text-[var(--text-secondary)]">
+                        <div className="mt-4 pt-4 border-t border-border text-xs font-mono text-muted-foreground">
                           <div className="flex items-center gap-2">
                              <ShieldCheck className={`w-3 h-3 ${msg.complianceReport.originalityScore > 80 ? 'text-green-600' : 'text-red-500'}`} />
                              <span>Originality Score: {msg.complianceReport.originalityScore}%</span>
@@ -375,11 +454,11 @@ const App = () => {
         </div>
 
         {/* Input Area */}
-        <div className="p-4 lg:p-6 bg-[var(--bg-main)] border-t border-[var(--border)] z-20 transition-colors duration-300">
-          <div className="max-w-4xl mx-auto relative flex items-end gap-3 bg-[var(--bg-sidebar)] p-2 rounded-xl border border-[var(--border)] shadow-2xl transition-colors">
+        <div className="p-4 lg:p-6 bg-background border-t border-border z-20 transition-colors duration-300">
+          <div className="max-w-4xl mx-auto relative flex items-end gap-3 bg-card p-2 rounded-xl border border-border shadow-lg transition-colors">
             <button 
               onClick={toggleRecording}
-              className={`p-3 rounded-lg transition-all ${isRecording ? "bg-red-100 text-red-600 animate-pulse" : "hover:bg-[var(--bg-main)] text-[var(--text-secondary)]"}`}
+              className={`p-3 rounded-lg transition-all ${isRecording ? "bg-destructive/10 text-destructive animate-pulse" : "hover:bg-accent text-muted-foreground"}`}
               title="Voice Input"
             >
               {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
@@ -395,8 +474,9 @@ const App = () => {
                   if (input.trim() && !agentStatus.active) processUserMessage(input);
                 }
               }}
-              placeholder="Describe the scene, mood, or hum a tune..."
-              className="flex-1 bg-transparent border-none focus:ring-0 text-[var(--text-main)] placeholder-[var(--text-secondary)] resize-none max-h-32 py-3 text-sm overflow-y-auto"
+              placeholder={apiKey ? "Describe the scene, mood, or hum a tune..." : "Please connect your API Key in settings..."}
+              disabled={!apiKey && !process.env.API_KEY}
+              className="flex-1 bg-transparent border-none focus:ring-0 text-foreground placeholder-muted-foreground resize-none max-h-32 py-3 text-sm overflow-y-auto disabled:cursor-not-allowed"
               rows={1}
             />
 
@@ -404,14 +484,14 @@ const App = () => {
               onClick={() => {
                 if (input.trim() && !agentStatus.active) processUserMessage(input);
               }}
-              disabled={!input.trim() || agentStatus.active}
-              className="p-3 rounded-lg bg-[var(--accent)] text-[var(--accent-text)] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg"
+              disabled={!input.trim() || agentStatus.active || (!apiKey && !process.env.API_KEY)}
+              className="p-3 rounded-lg bg-primary text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:brightness-110"
             >
               <Send className="w-5 h-5" />
             </button>
           </div>
           <div className="text-center mt-2">
-            <p className="text-[10px] text-[var(--text-secondary)]">
+            <p className="text-[10px] text-muted-foreground">
               AI-generated content can be inaccurate. Please review.
             </p>
           </div>

@@ -2,8 +2,11 @@
 import { GoogleGenAI } from "@google/genai";
 import { MODEL_NAME, SYSTEM_INSTRUCTION_FORMATTER } from "../config";
 
-export const runFormatterAgent = async (lyrics: string): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+export const runFormatterAgent = async (lyrics: string, apiKey?: string): Promise<string> => {
+  const key = apiKey || process.env.API_KEY;
+  if (!key) throw new Error("API Key is missing");
+
+  const ai = new GoogleGenAI({ apiKey: key });
 
   const prompt = `
     INPUT LYRICS:

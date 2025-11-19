@@ -1,7 +1,6 @@
 
-
 import { GoogleGenAI, Type } from "@google/genai";
-import { MODEL_NAME, SYSTEM_INSTRUCTION_LYRICIST } from "../config";
+import { MODEL_NAME, SYSTEM_INSTRUCTION_LYRICIST, SCENARIO_KNOWLEDGE_BASE } from "../config";
 import { GeneratedLyrics, LanguageProfile, EmotionAnalysis, GenerationSettings } from "../types";
 import { cleanAndParseJSON, formatLyricsForDisplay } from "../utils";
 
@@ -21,10 +20,14 @@ export const runLyricistAgent = async (
   researchData: string, 
   userRequest: string, 
   languageProfile: LanguageProfile,
-  emotionData?: EmotionAnalysis,
-  generationSettings?: GenerationSettings
+  emotionData: EmotionAnalysis | undefined,
+  generationSettings: GenerationSettings | undefined,
+  apiKey?: string
 ): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const key = apiKey || process.env.API_KEY;
+  if (!key) throw new Error("API Key is missing");
+  
+  const ai = new GoogleGenAI({ apiKey: key });
 
   const lyricsSchema = {
     type: Type.OBJECT,
@@ -76,6 +79,31 @@ export const runLyricistAgent = async (
   const rhymeScheme = generationSettings?.customRhymeScheme || generationSettings?.rhymeScheme || "AABB";
   const singerConfig = generationSettings?.singerConfig || "Male Solo";
   
+  // --- SCENARIO CONTEXT INJECTION ---
+  let scenarioInstruction = "";
+  if (generationSettings?.ceremony && generationSettings.ceremony !== "None") {
+    // Find the scenario definition in the Knowledge Base
+    let foundScenario = null;
+    for (const cat of SCENARIO_KNOWLEDGE_BASE) {
+      const hit = cat.events.find(e => e.id === generationSettings.ceremony);
+      if (hit) {
+        foundScenario = hit;
+        break;
+      }
+    }
+
+    if (foundScenario) {
+      scenarioInstruction = `
+      *** SCENARIO / CONTEXT INSTRUCTION (CRITICAL) ***
+      SCENARIO: ${foundScenario.label}
+      ${foundScenario.promptContext}
+      
+      INSTRUCTION: The song MUST explicitly reference the emotions, metaphors, and cultural tropes described above.
+      Do not write a generic ${theme} song. Write a specific song for ${foundScenario.label}.
+      `;
+    }
+  }
+  
   const rhymeInstruction = getRhymeDescription(rhymeScheme);
 
   // Define explicit complexity instructions to override "Great Poet" bias
@@ -103,6 +131,8 @@ export const runLyricistAgent = async (
     - SINGER CONFIGURATION: ${singerConfig}
     - RHYME SCHEME: ${rhymeScheme}
     
+    ${scenarioInstruction}
+
     *** COMPLEXITY INSTRUCTION (${complexity}): ***
     ${specificComplexityInstruction}
 
@@ -159,12 +189,12 @@ export const runLyricistAgent = async (
 
   } catch (error) {
     console.error("Lyricist Agent Error:", error);
-    return fallbackGeneration(researchData, userRequest, languageProfile.primary);
+    return fallbackGeneration(key, researchData, userRequest, languageProfile.primary);
   }
 };
 
-const fallbackGeneration = async (researchData: string, userRequest: string, targetLanguage: string) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const fallbackGeneration = async (apiKey: string, researchData: string, userRequest: string, targetLanguage: string) => {
+  const ai = new GoogleGenAI({ apiKey: apiKey });
   const response = await ai.models.generateContent({
     model: MODEL_NAME,
     config: { systemInstruction: SYSTEM_INSTRUCTION_LYRICIST },

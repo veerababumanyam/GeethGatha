@@ -4,8 +4,11 @@ import { MODEL_NAME, SYSTEM_INSTRUCTION_COMPLIANCE } from "../config";
 import { ComplianceReport, GeneratedLyrics } from "../types";
 import { cleanAndParseJSON } from "../utils";
 
-export const runComplianceAgent = async (lyrics: GeneratedLyrics | string): Promise<ComplianceReport> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+export const runComplianceAgent = async (lyrics: GeneratedLyrics | string, apiKey?: string): Promise<ComplianceReport> => {
+  const key = apiKey || process.env.API_KEY;
+  if (!key) throw new Error("API Key is missing");
+
+  const ai = new GoogleGenAI({ apiKey: key });
   
   // Handle both object and string input
   const lyricsText = typeof lyrics === 'string' ? lyrics : JSON.stringify(lyrics);

@@ -1,5 +1,4 @@
 
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { MODEL_NAME, SYSTEM_INSTRUCTION_REVIEW } from "../config";
 import { GeneratedLyrics, LanguageProfile, GenerationSettings } from "../types";
@@ -20,9 +19,13 @@ export const runReviewAgent = async (
   draftLyrics: string, 
   originalContext: string,
   languageProfile: LanguageProfile,
-  generationSettings?: GenerationSettings
+  generationSettings: GenerationSettings | undefined,
+  apiKey?: string
 ): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const key = apiKey || process.env.API_KEY;
+  if (!key) throw new Error("API Key is missing");
+
+  const ai = new GoogleGenAI({ apiKey: key });
 
   const lyricsSchema = {
     type: Type.OBJECT,

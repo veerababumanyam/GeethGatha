@@ -28,7 +28,8 @@ export const useOrchestrator = () => {
     request: string,
     languageSettings: LanguageProfile,
     genSettings: GenerationSettings,
-    addMessage: (msg: Message) => void
+    addMessage: (msg: Message) => void,
+    apiKey?: string
   ) => {
     const workflowId = Date.now().toString();
     
@@ -54,12 +55,12 @@ export const useOrchestrator = () => {
         message: "Processing inputs...", 
         steps: initialSteps.map(s => s.id === 'multimodal' ? { ...s, status: 'active' } : s)
       });
-      const processedContext = await runMultiModalAgent(request); 
+      const processedContext = await runMultiModalAgent(request, undefined, undefined, apiKey); 
       updateAgentStep('multimodal', 'completed');
 
       // --- Step 1: Emotion Analysis & Preferences ---
       setAgentStatus(prev => ({ ...prev, currentAgent: "EMOTION", message: "Feeling the vibe...", steps: prev.steps.map(s => s.id === 'emotion' ? { ...s, status: 'active' } : s) }));
-      const emotionData = await runEmotionAgent(processedContext);
+      const emotionData = await runEmotionAgent(processedContext, apiKey);
       
       const effectiveTheme = genSettings.theme === "Custom" ? genSettings.customTheme : genSettings.theme;
       const effectiveMood = genSettings.mood === "Custom" ? genSettings.customMood : genSettings.mood;
@@ -68,27 +69,27 @@ export const useOrchestrator = () => {
 
       // --- Step 2: Research ---
       setAgentStatus(prev => ({ ...prev, currentAgent: "RESEARCH", message: "Analyzing context...", steps: prev.steps.map(s => s.id === 'research' ? { ...s, status: 'active' } : s) }));
-      const researchData = await runResearchAgent(processedContext, `${effectiveMood} - ${effectiveTheme}`);
+      const researchData = await runResearchAgent(processedContext, `${effectiveMood} - ${effectiveTheme}`, apiKey);
       updateAgentStep('research', 'completed');
 
       // --- Step 3: Lyricist ---
       setAgentStatus(prev => ({ ...prev, currentAgent: "LYRICIST", message: "Composing...", steps: prev.steps.map(s => s.id === 'lyricist' ? { ...s, status: 'active' } : s) }));
-      const draftLyrics = await runLyricistAgent(researchData, processedContext, languageSettings, emotionData, genSettings);
+      const draftLyrics = await runLyricistAgent(researchData, processedContext, languageSettings, emotionData, genSettings, apiKey);
       updateAgentStep('lyricist', 'completed');
 
       // --- Step 4: Compliance Check ---
       setAgentStatus(prev => ({ ...prev, currentAgent: "COMPLIANCE", message: "Checking safety...", steps: prev.steps.map(s => s.id === 'compliance' ? { ...s, status: 'active' } : s) }));
-      const complianceReport = await runComplianceAgent(draftLyrics);
+      const complianceReport = await runComplianceAgent(draftLyrics, apiKey);
       updateAgentStep('compliance', 'completed');
 
       // --- Step 5: Review ---
       setAgentStatus(prev => ({ ...prev, currentAgent: "REVIEW", message: "Polishing...", steps: prev.steps.map(s => s.id === 'review' ? { ...s, status: 'active' } : s) }));
-      const finalLyrics = await runReviewAgent(draftLyrics, processedContext, languageSettings, genSettings);
+      const finalLyrics = await runReviewAgent(draftLyrics, processedContext, languageSettings, genSettings, apiKey);
       updateAgentStep('review', 'completed');
 
       // --- Step 6: Formatter (Suno.com) ---
       setAgentStatus(prev => ({ ...prev, currentAgent: "FORMATTER", message: "Formatting for Suno.com...", steps: prev.steps.map(s => s.id === 'formatter' ? { ...s, status: 'active' } : s) }));
-      const sunoLyrics = await runFormatterAgent(finalLyrics);
+      const sunoLyrics = await runFormatterAgent(finalLyrics, apiKey);
       updateAgentStep('formatter', 'completed');
 
       // --- Step 7: Final Output ---
@@ -114,7 +115,7 @@ export const useOrchestrator = () => {
       addMessage({
         id: Date.now().toString(),
         role: "system",
-        content: "I encountered a musical block. Please try again.",
+        content: "I encountered a musical block. Please check your API Key settings and try again.",
         timestamp: new Date()
       });
     } finally {

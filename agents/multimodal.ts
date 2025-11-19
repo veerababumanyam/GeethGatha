@@ -2,11 +2,14 @@
 import { GoogleGenAI } from "@google/genai";
 import { MODEL_NAME, SYSTEM_INSTRUCTION_MULTIMODAL } from "../config";
 
-export const runMultiModalAgent = async (input: string, image?: string, audio?: string): Promise<string> => {
+export const runMultiModalAgent = async (input: string, image?: string, audio?: string, apiKey?: string): Promise<string> => {
   // If no media is provided, just return the text input
   if (!image && !audio) return input;
 
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const key = apiKey || process.env.API_KEY;
+  if (!key) throw new Error("API Key is missing");
+
+  const ai = new GoogleGenAI({ apiKey: key });
   
   const parts: any[] = [{ text: `User Text Context: ${input}` }];
 
