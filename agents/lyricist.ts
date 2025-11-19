@@ -122,6 +122,7 @@ export const runLyricistAgent = async (
     ${languageInstruction}
     - **OUTPUT SCRIPT:** The lyrics text must be in ${languageProfile.primary} native script.
     - **NO ENGLISH CONTENT:** Do NOT write the lyrics in English/Roman Script. Only the tags like [Chorus] are English.
+    - **NO TRANSLATION:** Do not provide English translations in the JSON output lines.
     
     STRICT CONFIGURATION:
     - Theme: ${theme}
@@ -141,7 +142,6 @@ export const runLyricistAgent = async (
     - **PATTERN DEFINITION:** ${rhymeInstruction}
     - You MUST maintain **ANTHYA PRASA** (End Rhyme) strictly according to the pattern above.
     - The last words/syllables of the matching lines MUST sound similar phonetically.
-    - **NO FREE VERSE** (Unless specifically requested). Every stanza must satisfy the ${rhymeScheme} structure.
     
     EMOTIONAL ANALYSIS:
     - Navarasa: ${emotionData?.navarasa || 'N/A'}
@@ -153,6 +153,12 @@ export const runLyricistAgent = async (
     TASK:
     Compose a high-fidelity Indian Cinema song.
     
+    *** THINKING PROCESS INSTRUCTION ***
+    Before generating the JSON:
+    1. Plan the **Maatra (Meter)**: Ensure lines have a singable rhythm.
+    2. Plan the **Prasa (Rhymes)**: List out rhyming words for ${languageProfile.primary} that fit the ${mood} context.
+    3. Draft the verses mentally to ensure the rhyme scheme ${rhymeScheme} is perfectly met.
+
     MANDATORY STRUCTURAL BLUEPRINT (DO NOT DEVIATE):
     1. **[Intro]**: Include humming, alaap, or atmospheric sounds.
     2. **[Verse 1]**: First stanza.
@@ -175,6 +181,7 @@ export const runLyricistAgent = async (
         systemInstruction: SYSTEM_INSTRUCTION_LYRICIST,
         responseMimeType: "application/json",
         responseSchema: lyricsSchema,
+        // Increased budget for Meter and Rhyme planning
         thinkingConfig: { thinkingBudget: 4096 }, 
         temperature: 0.85, 
       }

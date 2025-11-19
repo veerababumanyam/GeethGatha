@@ -128,38 +128,62 @@ export const getLanguageCode = (lang: string): string => {
 };
 
 /**
- * Decodes and plays raw PCM audio data (24kHz) from Gemini TTS
+ * Decodes and plays raw PCM audio data (24kHz) from Gemini TTS.
+ * Returns an object with a stop() method to cancel playback.
  */
-export const playPCMData = async (base64Data: string): Promise<void> => {
-  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+export const playPCMData = async (base64Data: string, onEnded?: () => void): Promise<{ stop: () => void }> => {
+  const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+  const audioContext = new AudioContextClass({ sampleRate: 24000 });
   
-  // Decode Base64
-  const binaryString = atob(base64Data);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
+  try {
+    // Decode Base64
+    const binaryString = atob(base64Data);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
 
-  // Convert PCM to Float32 AudioBuffer (raw 16-bit PCM to -1.0 to 1.0 float)
-  const dataInt16 = new Int16Array(bytes.buffer);
-  const buffer = audioContext.createBuffer(1, dataInt16.length, 24000);
-  const channelData = buffer.getChannelData(0);
-  for (let i = 0; i < dataInt16.length; i++) {
-    channelData[i] = dataInt16[i] / 32768.0;
-  }
+    // Convert PCM to Float32 AudioBuffer (raw 16-bit PCM to -1.0 to 1.0 float)
+    const dataInt16 = new Int16Array(bytes.buffer);
+    const buffer = audioContext.createBuffer(1, dataInt16.length, 24000);
+    const channelData = buffer.getChannelData(0);
+    for (let i = 0; i < dataInt16.length; i++) {
+      channelData[i] = dataInt16[i] / 32768.0;
+    }
 
-  // Play
-  const source = audioContext.createBufferSource();
-  source.buffer = buffer;
-  source.connect(audioContext.destination);
-  source.start();
+    // Play
+    const source = audioContext.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audioContext.destination);
+    source.start();
 
-  return new Promise((resolve) => {
     source.onended = () => {
-      source.disconnect();
-      audioContext.close();
-      resolve();
+      try {
+        source.disconnect();
+        audioContext.close();
+      } catch (e) {
+        // ignore close errors
+      }
+      if (onEnded) onEnded();
     };
-  });
+
+    return {
+      stop: () => {
+        try {
+          source.stop();
+          source.disconnect();
+          audioContext.close();
+        } catch (e) {
+          console.warn("Error stopping audio:", e);
+        }
+      }
+    };
+  } catch (e) {
+    console.error("Audio decode/play failed", e);
+    try {
+       audioContext.close();
+    } catch (err) {}
+    throw e;
+  }
 };

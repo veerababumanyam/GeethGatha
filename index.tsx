@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import {
-  Mic, Send, Menu, Globe, MoreVertical, MicOff, User, Bot, Feather, BookOpen, CheckCircle, Sparkles, Heart, ShieldCheck, Video, FileCode, Settings as SettingsIcon, Key
+  Mic, Send, Menu, Globe, MoreVertical, MicOff, User, Bot, Feather, BookOpen, CheckCircle, Sparkles, Heart, ShieldCheck, Video, FileCode, Settings as SettingsIcon, Key, HelpCircle, Trash2
 } from "lucide-react";
 
 // Modular Imports
@@ -10,7 +10,7 @@ import { AgentType, Message, LanguageProfile, GenerationSettings, AppearanceSett
 import { runChatAgent } from "./agents/chat";
 import { useOrchestrator } from "./hooks/useOrchestrator";
 import { getLanguageCode, GeminiError } from "./utils";
-import { DEFAULT_THEMES, SUGGESTION_CHIPS } from "./config";
+import { DEFAULT_THEMES, SUGGESTION_CHIPS, ENHANCED_PROMPTS, AUTO_OPTION } from "./config";
 import "./global.css";
 
 // Component Imports
@@ -18,6 +18,7 @@ import { Sidebar } from "./components/Sidebar";
 import { WorkflowStatus } from "./components/WorkflowStatus";
 import { LyricsRenderer } from "./components/LyricsRenderer";
 import { SettingsModal } from "./components/SettingsModal";
+import { HelpModal } from "./components/HelpModal";
 import { MoodBackground } from "./components/MoodBackground";
 
 // --- Helpers ---
@@ -69,21 +70,36 @@ const hexToHSL = (hex: string) => {
   return `${h} ${s}% ${l}%`;
 };
 
+const INITIAL_MESSAGE: Message = {
+  id: "welcome",
+  role: "model",
+  content: "Namaste! I am SWAZ eLyrics. I can help you weave magic into words for your next melody. Tell me the situation, mood, or language you have in mind.",
+  senderAgent: "CHAT",
+  timestamp: new Date(),
+};
+
 // --- Main App Orchestrator ---
 
 const App = () => {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "welcome",
-      role: "model",
-      content: "Namaste! I am SWAZ eLyrics. I can help you weave magic into words for your next melody. Tell me the situation, mood, or language you have in mind.",
-      senderAgent: "CHAT",
-      timestamp: new Date(),
-    },
-  ]);
+  // Load messages from persistence or use default
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const saved = localStorage.getItem("swaz_chat_history");
+    if (saved) {
+      try {
+        // Re-hydrate dates
+        const parsed = JSON.parse(saved);
+        return parsed.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }));
+      } catch (e) {
+        console.error("Failed to load history", e);
+      }
+    }
+    return [INITIAL_MESSAGE];
+  });
+
   const [input, setInput] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
   
   // API Key Management - Initialize lazily from storage to prevent flash of "no key"
   const [apiKey, setApiKey] = useState(() => {
@@ -121,20 +137,20 @@ const App = () => {
     tertiary: "Telugu"
   });
 
-  // Detailed Generation Preferences
+  // Detailed Generation Preferences - INITIALIZE TO AUTO
   const [genSettings, setGenSettings] = useState<GenerationSettings>({
     category: "",
     ceremony: "",
-    theme: "Romance",
+    theme: AUTO_OPTION,
     customTheme: "",
-    mood: "Romantic (Shringara)",
+    mood: AUTO_OPTION,
     customMood: "",
-    style: "Melody",
+    style: AUTO_OPTION,
     customStyle: "",
-    complexity: "Poetic",
-    rhymeScheme: "AABB",
+    complexity: AUTO_OPTION, // Will resolve to "Poetic" or "Simple" by AI
+    rhymeScheme: AUTO_OPTION,
     customRhymeScheme: "",
-    singerConfig: "Male Solo"
+    singerConfig: AUTO_OPTION
   });
 
   const { agentStatus, setAgentStatus, runSongGenerationWorkflow } = useOrchestrator();
@@ -143,6 +159,15 @@ const App = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Persist Messages
+  useEffect(() => {
+    if (messages.length > 0) {
+      // Limit history size to avoid storage quota
+      const messagesToSave = messages.slice(-50); 
+      localStorage.setItem("swaz_chat_history", JSON.stringify(messagesToSave));
+    }
+  }, [messages]);
 
   // Apply Appearance Changes (Theme Variables + Font Size)
   useEffect(() => {
@@ -213,6 +238,27 @@ const App = () => {
     setLanguageSettings(lang);
     setGenSettings(gen);
   }, []);
+
+  const handleClearChat = () => {
+    if (confirm("Are you sure you want to clear the conversation history?")) {
+      setMessages([INITIAL_MESSAGE]);
+      localStorage.removeItem("swaz_chat_history");
+    }
+  };
+
+  const handleSuggestionClick = (label: string) => {
+    const enhancedPrompt = ENHANCED_PROMPTS[label] || label;
+    setInput(enhancedPrompt);
+    // Give browser time to render new value then focus
+    setTimeout(() => {
+        if (textareaRef.current) {
+            textareaRef.current.focus();
+            // adjust height
+            textareaRef.current.style.height = "auto";
+            textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+        }
+    }, 10);
+  };
 
   // --- Processing Logic ---
 
@@ -358,6 +404,7 @@ const App = () => {
         generationSettings={genSettings}
         onSettingChange={handleSettingChange}
         onLoadProfile={handleLoadProfile}
+        onOpenHelp={() => setIsHelpOpen(true)}
       />
 
       <SettingsModal 
@@ -367,6 +414,11 @@ const App = () => {
         onUpdateSettings={handleUpdateAppearance}
         apiKey={apiKey}
         onUpdateApiKey={handleUpdateApiKey}
+      />
+      
+      <HelpModal
+        isOpen={isHelpOpen}
+        onClose={() => setIsHelpOpen(false)}
       />
 
       {/* --- Main Chat Area --- */}
@@ -397,18 +449,27 @@ const App = () => {
                 </button>
             )}
             <button 
+              onClick={() => setIsHelpOpen(true)}
+              className="p-2 text-muted-foreground hover:text-primary transition-colors flex items-center gap-2"
+              title="Help & Prompts"
+            >
+               <HelpCircle className="w-5 h-5" />
+               <span className="hidden sm:inline text-xs font-medium">Help</span>
+            </button>
+             <button 
+              onClick={handleClearChat}
+              className="p-2 text-muted-foreground hover:text-destructive transition-colors"
+              title="Clear Chat History"
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
+            <button 
               onClick={() => setIsSettingsOpen(true)}
               className="p-2 text-muted-foreground hover:text-primary transition-colors flex items-center gap-2"
               title="Settings"
             >
               <SettingsIcon className="w-5 h-5" />
-              <span className="hidden sm:inline text-xs font-medium">Theme & Text</span>
-            </button>
-            <button className="p-2 text-muted-foreground hover:text-primary transition-colors" title="Language Settings">
-              <Globe className="w-5 h-5" />
-            </button>
-            <button className="p-2 text-muted-foreground hover:text-foreground transition-colors">
-              <MoreVertical className="w-5 h-5" />
+              <span className="hidden sm:inline text-xs font-medium">Theme</span>
             </button>
           </div>
         </header>
@@ -497,7 +558,7 @@ const App = () => {
                  {getSuggestions().map((sug, i) => (
                    <button
                      key={i}
-                     onClick={() => processUserMessage(sug)}
+                     onClick={() => handleSuggestionClick(sug)}
                      className="text-[10px] whitespace-nowrap px-3 py-1.5 rounded-full bg-secondary/50 border border-border hover:bg-primary/10 hover:border-primary hover:text-primary transition-all backdrop-blur-sm font-medium text-muted-foreground"
                    >
                      <Sparkles className="w-2.5 h-2.5 inline mr-1" /> {sug}
@@ -525,7 +586,7 @@ const App = () => {
                     if (input.trim() && !agentStatus.active) processUserMessage(input);
                   }
                 }}
-                placeholder={apiKey ? "Describe the scene, mood, or hum a tune..." : "Please connect your API Key in settings..."}
+                placeholder={apiKey ? "Describe the scene, mood, characters (e.g. Ram & Sita), or hum a tune..." : "Please connect your API Key in settings..."}
                 disabled={!apiKey && !process.env.API_KEY}
                 className="flex-1 bg-transparent border-none focus:ring-0 text-foreground placeholder-muted-foreground resize-none max-h-32 py-3 text-sm overflow-y-auto disabled:cursor-not-allowed"
                 rows={1}

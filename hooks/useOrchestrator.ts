@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { AgentStatus, AgentStep, Message, LanguageProfile, GenerationSettings } from "../types";
+import { AgentStatus, AgentStep, Message, LanguageProfile, GenerationSettings, EmotionAnalysis } from "../types";
 import { runMultiModalAgent } from "../agents/multimodal";
 import { runEmotionAgent } from "../agents/emotion";
 import { runResearchAgent } from "../agents/research";
@@ -9,6 +9,7 @@ import { runComplianceAgent } from "../agents/compliance";
 import { runReviewAgent } from "../agents/review";
 import { runFormatterAgent } from "../agents/formatter";
 import { GeminiError } from "../utils";
+import { AUTO_OPTION } from "../config";
 
 export const useOrchestrator = () => {
   const [agentStatus, setAgentStatus] = useState<AgentStatus>({
@@ -23,6 +24,49 @@ export const useOrchestrator = () => {
       ...prev,
       steps: prev.steps.map(s => s.id === stepId ? { ...s, status } : s)
     }));
+  };
+
+  // Helper to resolve "Auto" settings using emotion analysis
+  const resolveAutoSettings = (gen: GenerationSettings, emotion: EmotionAnalysis): GenerationSettings => {
+    const resolved = { ...gen };
+    const isHappy = emotion.sentiment.toLowerCase().includes('positive');
+    
+    if (resolved.mood === AUTO_OPTION) {
+      resolved.mood = `${emotion.navarasa} (${emotion.sentiment})`;
+    }
+    
+    if (resolved.theme === AUTO_OPTION) {
+        // Map vibe directly to theme fallback
+        resolved.theme = emotion.vibeDescription;
+    }
+
+    if (resolved.style === AUTO_OPTION) {
+      // Heuristic based on intensity and emotion
+      if (emotion.intensity >= 8 || ['Raudra', 'Veera', 'Hasya'].includes(emotion.navarasa)) {
+         resolved.style = "Fast Beat/Mass";
+      } else if (['Shringara', 'Karuna', 'Shanta'].includes(emotion.navarasa)) {
+         resolved.style = "Melody";
+      } else {
+         resolved.style = "Folk";
+      }
+    }
+    
+    if (resolved.singerConfig === AUTO_OPTION) {
+      if (emotion.navarasa.includes("Shringara")) resolved.singerConfig = "Duet (Male + Female)";
+      else if (emotion.navarasa.includes("Hasya")) resolved.singerConfig = "Group Chorus";
+      else resolved.singerConfig = "Male Solo";
+    }
+
+    if (resolved.complexity === AUTO_OPTION) {
+        // High intensity often implies simpler, punchier lyrics. Low intensity = poetic.
+        resolved.complexity = emotion.intensity > 7 ? "Simple" : "Poetic";
+    }
+    
+    if (resolved.rhymeScheme === AUTO_OPTION) {
+        resolved.rhymeScheme = "AABB"; // Safe default
+    }
+
+    return resolved;
   };
 
   const runSongGenerationWorkflow = async (
@@ -63,19 +107,20 @@ export const useOrchestrator = () => {
       setAgentStatus(prev => ({ ...prev, currentAgent: "EMOTION", message: "Feeling the vibe...", steps: prev.steps.map(s => s.id === 'emotion' ? { ...s, status: 'active' } : s) }));
       const emotionData = await runEmotionAgent(processedContext, apiKey);
       
-      const effectiveTheme = genSettings.theme === "Custom" ? genSettings.customTheme : genSettings.theme;
-      const effectiveMood = genSettings.mood === "Custom" ? genSettings.customMood : genSettings.mood;
+      // RESOLVE SMART DEFAULTS
+      const resolvedSettings = resolveAutoSettings(genSettings, emotionData);
 
       updateAgentStep('emotion', 'completed');
 
       // --- Step 2: Research ---
-      setAgentStatus(prev => ({ ...prev, currentAgent: "RESEARCH", message: "Analyzing context...", steps: prev.steps.map(s => s.id === 'research' ? { ...s, status: 'active' } : s) }));
-      const researchData = await runResearchAgent(processedContext, `${effectiveMood} - ${effectiveTheme}`, apiKey);
+      setAgentStatus(prev => ({ ...prev, currentAgent: "RESEARCH", message: `Analyzing context (${resolvedSettings.mood})...`, steps: prev.steps.map(s => s.id === 'research' ? { ...s, status: 'active' } : s) }));
+      const researchData = await runResearchAgent(processedContext, `${resolvedSettings.mood} - ${resolvedSettings.theme}`, apiKey);
       updateAgentStep('research', 'completed');
 
       // --- Step 3: Lyricist ---
-      setAgentStatus(prev => ({ ...prev, currentAgent: "LYRICIST", message: "Composing...", steps: prev.steps.map(s => s.id === 'lyricist' ? { ...s, status: 'active' } : s) }));
-      const draftLyrics = await runLyricistAgent(researchData, processedContext, languageSettings, emotionData, genSettings, apiKey);
+      setAgentStatus(prev => ({ ...prev, currentAgent: "LYRICIST", message: `Composing (${resolvedSettings.style})...`, steps: prev.steps.map(s => s.id === 'lyricist' ? { ...s, status: 'active' } : s) }));
+      // Pass resolved settings to Lyricist
+      const draftLyrics = await runLyricistAgent(researchData, processedContext, languageSettings, emotionData, resolvedSettings, apiKey);
       updateAgentStep('lyricist', 'completed');
 
       // --- Step 4: Compliance Check ---
@@ -85,7 +130,7 @@ export const useOrchestrator = () => {
 
       // --- Step 5: Review ---
       setAgentStatus(prev => ({ ...prev, currentAgent: "REVIEW", message: "Polishing...", steps: prev.steps.map(s => s.id === 'review' ? { ...s, status: 'active' } : s) }));
-      const finalLyrics = await runReviewAgent(draftLyrics, processedContext, languageSettings, genSettings, apiKey);
+      const finalLyrics = await runReviewAgent(draftLyrics, processedContext, languageSettings, resolvedSettings, apiKey);
       updateAgentStep('review', 'completed');
 
       // --- Step 6: Formatter (Suno.com) ---

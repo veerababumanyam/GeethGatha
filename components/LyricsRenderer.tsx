@@ -1,39 +1,51 @@
 
 import React, { useState, useEffect, useRef } from "react";
-import { Music, Copy, Play, RefreshCw, Sparkles, Clock, ListMusic, FileCode, Eye, Loader2, StopCircle, Download, Printer, Share2, Edit3, Save, Wand2, Check } from "lucide-react";
+import { Music, Copy, Play, RefreshCw, Sparkles, Clock, ListMusic, FileCode, Eye, Loader2, Square, Download, Printer, Share2, Edit3, Save, Wand2, Check, Image as ImageIcon2, XCircle, CheckCircle2 } from "lucide-react";
 import { GoogleGenAI, Modality } from "@google/genai";
 import { TTS_MODEL, MODEL_NAME } from "../config";
 import { playPCMData, wrapGenAIError } from "../utils";
+import { runArtAgent } from "../agents/art";
 
-interface ActionButtonProps {
+interface TabButtonProps {
   icon: React.ReactNode;
   label: string;
-  onClick?: () => void;
-  active?: boolean;
-  disabled?: boolean;
-  primary?: boolean;
-  title?: string;
+  active: boolean;
+  onClick: () => void;
 }
 
-const ActionButton = ({ icon, label, onClick, active, disabled, primary, title }: ActionButtonProps) => (
-  <button 
+const TabButton = ({ icon, label, active, onClick }: TabButtonProps) => (
+  <button
+    onClick={onClick}
+    className={`
+      flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200
+      ${active 
+        ? "bg-background text-primary shadow-sm ring-1 ring-black/5 dark:ring-white/10" 
+        : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+      }
+    `}
+  >
+    {React.cloneElement(icon as React.ReactElement<{ className?: string }>, { className: `w-3.5 h-3.5 ${active ? 'text-primary' : ''}` })}
+    <span>{label}</span>
+  </button>
+);
+
+const ActionButton = ({ icon, label, onClick, disabled, title }: { icon: React.ReactNode, label: string, onClick: () => void, disabled?: boolean, title?: string }) => (
+  <button
     onClick={onClick}
     disabled={disabled}
     title={title}
     className={`
-      flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium transition-all border shadow-sm select-none
-      ${active 
-        ? "bg-primary text-primary-foreground border-primary shadow-primary/25" 
-        : primary
-          ? "bg-primary text-primary-foreground border-primary hover:brightness-110 shadow-md shadow-primary/20"
-          : disabled
-            ? "bg-muted text-muted-foreground border-transparent cursor-not-allowed opacity-50"
-            : "bg-card text-card-foreground border-border hover:bg-secondary hover:border-primary/30 hover:shadow-sm"
+      flex flex-col items-center gap-1 p-2 rounded-lg transition-all w-20
+      ${disabled 
+        ? "opacity-40 cursor-not-allowed bg-transparent" 
+        : "hover:bg-secondary text-muted-foreground hover:text-foreground bg-transparent"
       }
     `}
   >
-    {React.cloneElement(icon as React.ReactElement<{ className?: string }>, { className: "w-3.5 h-3.5" })}
-    <span className="hidden sm:inline">{label}</span>
+    <div className="p-2 bg-secondary rounded-full mb-0.5 border border-border/50 shadow-sm group-hover:border-primary/30">
+      {React.cloneElement(icon as React.ReactElement<{ className?: string }>, { className: "w-4 h-4" })}
+    </div>
+    <span className="text-[9px] font-medium text-center leading-none">{label}</span>
   </button>
 );
 
@@ -73,19 +85,55 @@ const renderStyledLine = (line: string) => {
   );
 };
 
-export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: string, sunoContent?: string, apiKey?: string }) => {
-  const [viewMode, setViewMode] = useState<'PRETTY' | 'SUNO'>('PRETTY');
-  const [isEditing, setIsEditing] = useState(false);
-  const [editableContent, setEditableContent] = useState(content);
-  const [audioStatus, setAudioStatus] = useState<'IDLE' | 'GENERATING' | 'PLAYING'>('IDLE');
-  const [isFixingRhyme, setIsFixingRhyme] = useState(false);
+// Helper to group lines into sections for rendering
+const parseLyricsIntoSections = (lines: string[]) => {
+  const sections: { type: 'header' | 'content', text: string, id: number }[] = [];
+  let currentId = 0;
 
-  // Sync props to edit state if props change (new generation)
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    const isHeader = trimmed.startsWith('[') && trimmed.endsWith(']') 
+      && (trimmed.includes("Verse") || trimmed.includes("Chorus") || trimmed.includes("Bridge") || trimmed.includes("Intro") || trimmed.includes("Outro") || trimmed.includes("Hook"));
+    
+    if (isHeader) {
+      sections.push({ type: 'header', text: trimmed, id: currentId++ });
+    } else if (trimmed) {
+      sections.push({ type: 'content', text: line, id: currentId++ });
+    } else {
+       sections.push({ type: 'content', text: '', id: currentId++ });
+    }
+  });
+  return sections;
+};
+
+export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: string, sunoContent?: string, apiKey?: string }) => {
+  const [viewMode, setViewMode] = useState<'PRETTY' | 'EDIT' | 'SUNO'>('PRETTY');
+  const [editableContent, setEditableContent] = useState(content);
+  
+  // Audio States
+  const [globalAudioStatus, setGlobalAudioStatus] = useState<'IDLE' | 'GENERATING' | 'PLAYING'>('IDLE');
+  const [playingSectionId, setPlayingSectionId] = useState<number | null>(null);
+  const stopAudioRef = useRef<(() => void) | null>(null);
+  
+  // Feature States
+  const [isFixingRhyme, setIsFixingRhyme] = useState(false);
+  const [coverArtUrl, setCoverArtUrl] = useState<string | null>(null);
+  const [isGeneratingArt, setIsGeneratingArt] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
+
   useEffect(() => {
     setEditableContent(content);
   }, [content]);
 
+  useEffect(() => {
+    if (copyStatus === 'copied') {
+      const timer = setTimeout(() => setCopyStatus('idle'), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [copyStatus]);
+
   const lines = editableContent.split('\n');
+  const sections = parseLyricsIntoSections(lines);
   
   // Extract metadata if present
   const metadata: Record<string, string> = {};
@@ -100,9 +148,9 @@ export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: stri
     else lyricsLines.push(line);
   });
 
-  const copyToClipboard = () => {
-    const textToCopy = viewMode === 'SUNO' && sunoContent ? sunoContent : editableContent;
-    navigator.clipboard.writeText(textToCopy);
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopyStatus('copied');
   };
 
   const handleDownload = () => {
@@ -112,10 +160,8 @@ export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: stri
     const a = document.createElement("a");
     a.href = url;
     
-    // Generate filename based on title or timestamp
     let filename = "swaz-elyrics.txt";
     if (metadata.title) {
-      // Sanitize title for filename
       const safeTitle = metadata.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
       filename = `${safeTitle}.txt`;
     } else {
@@ -144,36 +190,16 @@ export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: stri
             <html>
             <head>
                 <title>${metadata.title || 'SWAZ eLyrics'}</title>
-                <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Telugu:wght@400;700&family=Playfair+Display:wght@600&display=swap" rel="stylesheet">
                 <style>
-                    body { font-family: 'Noto Sans Telugu', sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; color: #1e293b; }
-                    .header { text-align: center; margin-bottom: 40px; border-bottom: 2px solid #f1f5f9; padding-bottom: 24px; }
-                    h1 { font-family: 'Playfair Display', serif; color: #0f172a; margin: 0 0 10px 0; font-size: 32px; }
-                    .meta { font-size: 12px; color: #64748b; margin-top: 16px; display: flex; justify-content: center; gap: 24px; text-transform: uppercase; letter-spacing: 0.05em; }
-                    .meta span { display: flex; align-items: center; gap: 6px; background: #f8fafc; padding: 4px 12px; border-radius: 20px; border: 1px solid #e2e8f0; }
-                    .content { font-family: 'Noto Sans Telugu', sans-serif; }
-                    .footer { margin-top: 60px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #f1f5f9; padding-top: 20px; font-family: sans-serif; }
-                    @media print {
-                        body { padding: 0; }
-                        .no-print { display: none; }
-                    }
+                    body { font-family: sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; color: #1e293b; }
+                    h1 { margin: 0 0 10px 0; font-size: 32px; text-align: center; }
+                    .content { font-family: sans-serif; }
                 </style>
             </head>
             <body>
-                <div class="header">
-                    <h1>${metadata.title || 'Untitled Composition'}</h1>
-                    <div class="meta">
-                        ${metadata.language ? `<span>🗣️ ${metadata.language}</span>` : ''}
-                        ${metadata.music ? `<span>🎵 ${metadata.music}</span>` : ''}
-                        ${metadata.taalam ? `<span>🕒 ${metadata.taalam}</span>` : ''}
-                    </div>
-                </div>
-                <div class="content">
-                    ${printContent}
-                </div>
-                <div class="footer">
-                    Generated by SWAZ eLyrics Studio
-                </div>
+                ${coverArtUrl ? `<div style="text-align:center;margin-bottom:20px;"><img src="${coverArtUrl}" style="max-width:200px;border-radius:10px;" /></div>` : ''}
+                <h1>${metadata.title || 'Untitled Composition'}</h1>
+                <div class="content">${printContent}</div>
             </body>
             </html>
         `);
@@ -188,20 +214,14 @@ export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: stri
 
   const handleShare = async () => {
     const shareText = `${metadata.title ? metadata.title + '\n\n' : ''}${editableContent}\n\n(Created with SWAZ eLyrics)`;
-    const shareData = {
+    const shareData: ShareData = {
         title: metadata.title || 'SWAZ eLyrics Song',
         text: shareText,
     };
-    
     if (navigator.share) {
-        try {
-            await navigator.share(shareData);
-        } catch (err) {
-            console.debug('Share cancelled or failed', err);
-        }
+        try { await navigator.share(shareData); } catch (err) {}
     } else {
-        navigator.clipboard.writeText(shareText);
-        alert('Lyrics copied to clipboard!');
+        copyToClipboard(shareText);
     }
   };
 
@@ -216,10 +236,9 @@ export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: stri
        });
        if (response.text) {
          setEditableContent(response.text);
-         setIsEditing(true); // Enter edit mode so user can see changes
+         setViewMode('EDIT'); 
        }
     } catch (e) {
-      console.error("Magic Fix Error", e);
       const err = wrapGenAIError(e);
       alert(`Optimization Failed: ${err.message}`);
     } finally {
@@ -227,23 +246,55 @@ export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: stri
     }
   };
 
-  const handlePlay = async () => {
-    if (audioStatus !== 'IDLE') return;
-    
+  const handleGenerateArt = async () => {
+    if (!apiKey) return;
+    setIsGeneratingArt(true);
+    try {
+      const url = await runArtAgent(
+        metadata.title || "Song",
+        lyricsLines.join(" ").substring(0, 500),
+        "Cinematic, " + (metadata.music || "Musical"),
+        apiKey
+      );
+      if (url) setCoverArtUrl(url);
+    } catch (e) {
+      const err = wrapGenAIError(e);
+      alert(`Art Generation Failed: ${err.message}`);
+    } finally {
+      setIsGeneratingArt(false);
+    }
+  };
+
+  const stopAudio = () => {
+    if (stopAudioRef.current) {
+      stopAudioRef.current();
+      stopAudioRef.current = null;
+    }
+    setGlobalAudioStatus('IDLE');
+    setPlayingSectionId(null);
+  };
+
+  const handlePlayTTS = async (textToPlay: string, sectionId?: number) => {
+    // If already playing, stop it
+    if (globalAudioStatus === 'PLAYING') {
+      stopAudio();
+      return;
+    }
+
     const key = apiKey || process.env.API_KEY;
     if (!key) {
       alert("API Key missing. Please add it in settings to use TTS.");
       return;
     }
 
-    setAudioStatus('GENERATING');
+    if (sectionId !== undefined) setPlayingSectionId(sectionId);
+    setGlobalAudioStatus('GENERATING');
 
     try {
-      const cleanLyrics = lyricsLines.join("\n");
       const ai = new GoogleGenAI({ apiKey: key });
       const response = await ai.models.generateContent({
         model: TTS_MODEL,
-        contents: [{ parts: [{ text: `Recite these lyrics rhythmically and clearly. Do not sing, but recite with emotion: \n\n${cleanLyrics}` }] }],
+        contents: [{ parts: [{ text: `Recite these lyrics rhythmically and clearly. Do not sing, but recite with emotion: \n\n${textToPlay}` }] }],
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
@@ -256,198 +307,279 @@ export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: stri
 
       const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
       if (audioData) {
-        setAudioStatus('PLAYING');
-        await playPCMData(audioData);
-        setAudioStatus('IDLE');
+        setGlobalAudioStatus('PLAYING');
+        const controller = await playPCMData(audioData, () => {
+           setGlobalAudioStatus('IDLE');
+           setPlayingSectionId(null);
+           stopAudioRef.current = null;
+        });
+        stopAudioRef.current = controller.stop;
       } else {
-        setAudioStatus('IDLE');
+        setGlobalAudioStatus('IDLE');
+        setPlayingSectionId(null);
       }
     } catch (e) {
       const err = wrapGenAIError(e);
       console.error("TTS Error", e);
       alert(`TTS Failed: ${err.message}`);
-      setAudioStatus('IDLE');
+      setGlobalAudioStatus('IDLE');
+      setPlayingSectionId(null);
+    }
+  };
+
+  const handlePlayFull = () => handlePlayTTS(lyricsLines.join("\n"));
+
+  const handlePlaySection = (startIndex: number) => {
+    // If playing this specific section, stop.
+    if (globalAudioStatus === 'PLAYING' && playingSectionId === sections[startIndex].id) {
+      stopAudio();
+      return;
+    }
+    
+    // Gather text from startIndex until the next header
+    let sectionText = "";
+    for (let i = startIndex + 1; i < sections.length; i++) {
+      if (sections[i].type === 'header') break;
+      sectionText += sections[i].text + "\n";
+    }
+    if (sectionText.trim()) {
+      handlePlayTTS(sectionText, sections[startIndex].id);
     }
   };
 
   return (
-    <div className="relative group/renderer">
-      {/* Top Action Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 pb-4 border-b border-border gap-4 sm:gap-0">
-         <div className="flex gap-2 items-center flex-wrap">
-            <ActionButton 
+    <div className="relative group/renderer bg-card/40 border border-primary/10 rounded-xl overflow-hidden shadow-sm my-4">
+      
+      {/* --- Main Toolbar --- */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 border-b border-border bg-secondary/10 backdrop-blur-md gap-4 sm:gap-0">
+         
+         {/* View Toggles */}
+         <div className="flex bg-secondary/40 p-1 rounded-lg gap-0.5">
+            <TabButton 
               icon={<Eye />} 
               label="Visual" 
-              onClick={() => { setViewMode('PRETTY'); setIsEditing(false); }} 
-              active={viewMode === 'PRETTY' && !isEditing}
+              active={viewMode === 'PRETTY'} 
+              onClick={() => setViewMode('PRETTY')} 
             />
-            <ActionButton 
-              icon={isEditing ? <Save /> : <Edit3 />} 
-              label={isEditing ? "Save Edits" : "Studio Mode"} 
-              onClick={() => {
-                if (isEditing) {
-                   setIsEditing(false); // Save happens automatically via state
-                } else {
-                   setViewMode('PRETTY'); // Ensure we are in visual mode underlying
-                   setIsEditing(true);
-                }
-              }}
-              active={isEditing}
-              title="Edit lyrics manually"
+            <TabButton 
+              icon={<Edit3 />} 
+              label="Studio Mode" 
+              active={viewMode === 'EDIT'} 
+              onClick={() => setViewMode('EDIT')} 
             />
             {sunoContent && (
-              <ActionButton 
+              <TabButton 
                 icon={<FileCode />} 
                 label="Suno Code" 
-                onClick={() => { setViewMode('SUNO'); setIsEditing(false); }} 
-                active={viewMode === 'SUNO'}
+                active={viewMode === 'SUNO'} 
+                onClick={() => setViewMode('SUNO')} 
               />
             )}
          </div>
-         
-         <div className="flex gap-2">
-            {!isEditing && viewMode === 'PRETTY' && (
-               <ActionButton 
-                 icon={isFixingRhyme ? <Loader2 className="animate-spin" /> : <Wand2 />}
-                 label="Magic Rhymes"
-                 onClick={handleMagicRhymeFix}
-                 disabled={isFixingRhyme || !apiKey}
-               />
-            )}
+
+         {/* Center Actions */}
+         <div className="flex items-center gap-1">
             <ActionButton 
-              icon={
-                audioStatus === 'GENERATING' ? <Loader2 className="animate-spin" /> : 
-                audioStatus === 'PLAYING' ? <StopCircle className="animate-pulse text-red-400" /> : 
-                <Play className="ml-0.5" />
-              } 
-              label={
-                audioStatus === 'GENERATING' ? "Loading..." : 
-                audioStatus === 'PLAYING' ? "Playing" : 
-                "Listen"
-              } 
-              onClick={handlePlay}
-              primary={audioStatus === 'IDLE'}
-              disabled={audioStatus !== 'IDLE'}
+                icon={isFixingRhyme ? <Loader2 className="animate-spin" /> : <Wand2 />} 
+                label="Magic Rhymes" 
+                onClick={handleMagicRhymeFix}
+                disabled={isFixingRhyme || !apiKey}
+                title={!apiKey ? "API Key Required" : "Auto-fix rhymes"}
             />
+            <ActionButton 
+                icon={isGeneratingArt ? <Loader2 className="animate-spin" /> : <ImageIcon2 />} 
+                label="Album Art" 
+                onClick={handleGenerateArt}
+                disabled={isGeneratingArt || !apiKey || !!coverArtUrl}
+                title={!apiKey ? "API Key Required" : "Generate Art"}
+            />
+         </div>
+         
+         {/* Playback Control */}
+         <div>
+            <button 
+              onClick={handlePlayFull}
+              disabled={globalAudioStatus === 'GENERATING'}
+              className={`
+                 flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all shadow-md
+                 ${globalAudioStatus === 'PLAYING' 
+                   ? "bg-red-500 hover:bg-red-600 text-white shadow-red-500/20" 
+                   : "bg-primary hover:bg-primary/90 text-primary-foreground shadow-primary/20"
+                 }
+              `}
+            >
+               {globalAudioStatus === 'GENERATING' ? (
+                 <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading...</>
+               ) : globalAudioStatus === 'PLAYING' ? (
+                 <><Square className="w-3.5 h-3.5 fill-current" /> Stop</>
+               ) : (
+                 <><Play className="w-3.5 h-3.5 fill-current" /> Listen All</>
+               )}
+            </button>
          </div>
       </div>
 
-      {viewMode === 'PRETTY' ? (
-        <div className="font-serif-telugu relative">
+      <div className="bg-background/50 min-h-[300px] relative">
+      {viewMode === 'PRETTY' && (
+        <div className="p-6 font-serif-telugu relative">
           {/* Background Decoration */}
           <div className="absolute top-0 right-0 opacity-[0.03] dark:opacity-[0.05] pointer-events-none select-none">
             <Music className="w-64 h-64 text-foreground" />
           </div>
 
-          {/* Metadata Card */}
-          {!isEditing && (metadata.title || metadata.music || metadata.taalam) && (
-            <div className="mb-8 p-5 rounded-xl bg-secondary/30 border border-border/50 backdrop-blur-sm relative overflow-hidden group hover:border-primary/20 transition-colors">
-              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+          {/* Metadata & Art Card */}
+          <div className="mb-8 p-5 rounded-xl bg-secondary/30 border border-border/50 backdrop-blur-sm relative overflow-hidden group hover:border-primary/20 transition-colors flex flex-col md:flex-row gap-6 items-start">
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
               
-              {metadata.title && (
-                <h3 className="text-2xl font-cinema font-bold text-foreground mb-4 tracking-wide relative z-10 leading-tight">
-                  {metadata.title}
-                </h3>
+              {/* Album Art Display */}
+              {coverArtUrl && (
+                <div className="relative shrink-0 w-32 h-32 rounded-lg overflow-hidden shadow-lg border border-border/50 group/art">
+                   <img src={coverArtUrl} alt="Generated Album Art" className="w-full h-full object-cover" />
+                   <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/art:opacity-100 transition-opacity gap-2">
+                      <button onClick={() => {
+                        const a = document.createElement('a');
+                        a.href = coverArtUrl;
+                        a.download = 'album_art.jpg';
+                        a.click();
+                      }} className="p-1.5 bg-white/10 backdrop-blur hover:bg-white/20 rounded-full text-white">
+                        <Download className="w-4 h-4" />
+                      </button>
+                       <button onClick={() => setCoverArtUrl(null)} className="p-1.5 bg-white/10 backdrop-blur hover:bg-red-500/50 rounded-full text-white">
+                        <XCircle className="w-4 h-4" />
+                      </button>
+                   </div>
+                </div>
               )}
-              
-              <div className="flex flex-wrap gap-2 relative z-10">
-                {metadata.language && (
-                  <span className="flex items-center gap-1.5 bg-background/80 px-3 py-1.5 rounded-full border border-border/60 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur-md">
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                    {metadata.language}
-                  </span>
-                )}
-                {metadata.music && (
-                  <span className="flex items-center gap-1.5 bg-background/80 px-3 py-1.5 rounded-full border border-border/60 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur-md">
-                    <Sparkles className="w-3.5 h-3.5 text-purple-500" />
-                    {metadata.music}
-                  </span>
-                )}
-                 {metadata.taalam && (
-                  <span className="flex items-center gap-1.5 bg-background/80 px-3 py-1.5 rounded-full border border-border/60 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur-md">
-                    <Clock className="w-3.5 h-3.5 text-cyan-500" />
-                    {metadata.taalam}
-                  </span>
-                )}
-                {metadata.structure && (
-                  <span className="flex items-center gap-1.5 bg-background/80 px-3 py-1.5 rounded-full border border-border/60 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur-md">
-                    <ListMusic className="w-3.5 h-3.5 text-green-500" />
-                    {metadata.structure}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-          
-          {/* Lyrics Content */}
-          {isEditing ? (
-            <div className="relative animate-slideIn">
-              <textarea 
-                value={editableContent}
-                onChange={(e) => setEditableContent(e.target.value)}
-                className="w-full h-[60vh] p-6 bg-card rounded-xl border border-primary/50 focus:ring-2 focus:ring-primary/20 outline-none font-mono text-sm leading-loose resize-none shadow-inner"
-                spellCheck={false}
-              />
-              <div className="absolute bottom-4 right-4 bg-background/80 backdrop-blur px-3 py-1 rounded-full border border-border text-xs text-muted-foreground">
-                Studio Mode Active
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-1 px-1">
-              {lyricsLines.map((line, i) => {
-                const trimmed = line.trim();
-                const isSectionHeader = trimmed.startsWith('[') && trimmed.endsWith(']') 
-                  && (trimmed.includes("Verse") || trimmed.includes("Chorus") || trimmed.includes("Bridge") || trimmed.includes("Intro") || trimmed.includes("Outro") || trimmed.includes("Hook"));
 
-                if (isSectionHeader) {
+              <div className="flex-1 relative z-10">
+                {metadata.title && (
+                  <h3 className="text-2xl font-cinema font-bold text-foreground mb-4 tracking-wide leading-tight">
+                    {metadata.title}
+                  </h3>
+                )}
+                
+                <div className="flex flex-wrap gap-2">
+                  {metadata.language && (
+                    <span className="flex items-center gap-1.5 bg-background/80 px-3 py-1.5 rounded-full border border-border/60 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur-md">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                      {metadata.language}
+                    </span>
+                  )}
+                  {metadata.music && (
+                    <span className="flex items-center gap-1.5 bg-background/80 px-3 py-1.5 rounded-full border border-border/60 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur-md">
+                      <Sparkles className="w-3.5 h-3.5 text-purple-500" />
+                      {metadata.music}
+                    </span>
+                  )}
+                   {metadata.taalam && (
+                    <span className="flex items-center gap-1.5 bg-background/80 px-3 py-1.5 rounded-full border border-border/60 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur-md">
+                      <Clock className="w-3.5 h-3.5 text-cyan-500" />
+                      {metadata.taalam}
+                    </span>
+                  )}
+                  {metadata.structure && (
+                    <span className="flex items-center gap-1.5 bg-background/80 px-3 py-1.5 rounded-full border border-border/60 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur-md">
+                      <ListMusic className="w-3.5 h-3.5 text-green-500" />
+                      {metadata.structure}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          
+          {/* Lyrics Content Visual */}
+          <div className="space-y-1 px-1">
+              {sections.map((section, i) => {
+                if (section.type === 'header') {
                   return (
                     <div key={i} className="mt-8 mb-4 flex items-center gap-4 select-none group/header">
-                       <h4 className="text-primary font-cinema text-xs font-bold uppercase tracking-[0.25em] border-b-2 border-primary/20 pb-1 group-hover/header:border-primary/50 transition-colors">
-                          {trimmed.replace(/[\[\]]/g, '')}
-                       </h4>
+                       <div className="flex items-center gap-3">
+                          <h4 className="text-primary font-cinema text-xs font-bold uppercase tracking-[0.25em] border-b-2 border-primary/20 pb-1 group-hover/header:border-primary/50 transition-colors">
+                              {section.text.replace(/[\[\]]/g, '')}
+                          </h4>
+                          <button 
+                            onClick={() => handlePlaySection(i)}
+                            disabled={globalAudioStatus === 'GENERATING'}
+                            className={`p-1 rounded-full transition-all opacity-0 group-hover/header:opacity-100 ${
+                                playingSectionId === section.id 
+                                ? "opacity-100 text-red-500 bg-red-500/10" 
+                                : "text-muted-foreground hover:text-primary hover:bg-secondary"
+                            }`}
+                            title={playingSectionId === section.id ? "Stop Section" : "Play Section"}
+                          >
+                             {playingSectionId === section.id ? <Square className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3" />}
+                          </button>
+                       </div>
                        <div className="h-px flex-1 bg-gradient-to-r from-primary/20 to-transparent" />
                     </div>
                   );
                 }
                 
-                if (!trimmed) return <div key={i} className="h-3" />;
+                if (!section.text.trim()) return <div key={i} className="h-3" />;
                 
                 return (
                   <p key={i} className="text-lg text-foreground/90 leading-relaxed hover:text-foreground transition-colors cursor-text selection:bg-primary/20 selection:text-primary pl-1">
-                    {renderStyledLine(line)}
+                    {renderStyledLine(section.text)}
                   </p>
                 );
               })}
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="font-mono text-sm relative animate-slideIn">
-          <div className="bg-slate-950 text-slate-300 p-6 rounded-xl border border-slate-800 shadow-inner overflow-x-auto relative">
-            <div className="absolute top-0 right-0 px-3 py-1.5 bg-slate-900 rounded-bl-lg text-[10px] text-slate-500 font-bold border-l border-b border-slate-800">
-               SUNO V3.5
-            </div>
-            <pre className="whitespace-pre-wrap selection:bg-slate-700">
-              {sunoContent || "No Suno format available."}
-            </pre>
           </div>
-          <p className="text-[11px] text-muted-foreground mt-3 flex items-center gap-1.5 opacity-80">
-             <FileCode className="w-3.5 h-3.5" /> 
-             <span>Raw format optimized for music generation models. Metadata stripped.</span>
-          </p>
         </div>
       )}
 
-      {/* Footer Actions */}
-      <div className="flex flex-wrap gap-2 mt-10 pt-6 border-t border-border">
-        <ActionButton icon={<Copy />} label="Copy" onClick={copyToClipboard} />
-        <ActionButton icon={<Printer />} label="Print / PDF" onClick={handlePrint} />
-        <ActionButton icon={<Share2 />} label="Share" onClick={handleShare} />
-        <ActionButton icon={<Download />} label="Save Text" onClick={handleDownload} />
-        
-        <div className="ml-auto">
-          <ActionButton icon={<RefreshCw />} label="Re-compose" onClick={() => alert("To re-compose, please type a new instruction in the chat.")} />
+      {viewMode === 'EDIT' && (
+            <div className="relative animate-slideIn h-full bg-card">
+              <textarea 
+                value={editableContent}
+                onChange={(e) => setEditableContent(e.target.value)}
+                className="w-full h-[60vh] p-6 bg-transparent border-none focus:ring-0 outline-none font-mono text-sm leading-loose resize-none text-foreground/80"
+                spellCheck={false}
+              />
+              <button 
+                 onClick={() => copyToClipboard(editableContent)}
+                 className="absolute top-4 right-4 bg-primary/10 hover:bg-primary/20 text-primary p-2 rounded-md transition-colors flex items-center gap-2 text-xs font-medium"
+              >
+                {copyStatus === 'copied' ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                {copyStatus === 'copied' ? 'Copied' : 'Copy Text'}
+              </button>
+            </div>
+      )}
+
+      {viewMode === 'SUNO' && (
+        <div className="font-mono text-sm relative animate-slideIn p-0">
+          <div className="bg-slate-950 text-slate-300 p-6 min-h-[400px] overflow-x-auto relative">
+            <div className="absolute top-0 left-0 w-full h-10 bg-slate-900/50 border-b border-slate-800 flex items-center justify-between px-4">
+                 <span className="text-[10px] font-bold text-slate-500">SUNO V3.5 FORMAT</span>
+                 <button 
+                    onClick={() => copyToClipboard(sunoContent || '')}
+                    className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors"
+                 >
+                    {copyStatus === 'copied' ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                    {copyStatus === 'copied' ? 'Copied!' : 'Copy'}
+                 </button>
+            </div>
+            <pre className="whitespace-pre-wrap selection:bg-slate-700 mt-6">
+              {sunoContent || "No Suno format available."}
+            </pre>
+          </div>
         </div>
+      )}
+      </div>
+
+      {/* Footer Actions */}
+      <div className="flex flex-wrap gap-3 p-4 border-t border-border bg-secondary/5">
+        <button onClick={() => copyToClipboard(viewMode === 'SUNO' && sunoContent ? sunoContent : editableContent)} className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-primary transition-colors">
+             <Copy className="w-3.5 h-3.5" /> Copy Full Text
+        </button>
+        <button onClick={handleDownload} className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-primary transition-colors">
+             <Download className="w-3.5 h-3.5" /> Save .txt
+        </button>
+        <button onClick={handlePrint} className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-primary transition-colors">
+             <Printer className="w-3.5 h-3.5" /> Print / PDF
+        </button>
+        <button onClick={handleShare} className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-primary transition-colors ml-auto">
+             <Share2 className="w-3.5 h-3.5" /> Share
+        </button>
       </div>
     </div>
   );

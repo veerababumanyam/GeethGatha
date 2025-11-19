@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from "react";
-import { Music, X, Feather, CheckCircle, Languages, Sparkles, Mic2, Heart, Palette, ListOrdered, Users, Save, Download, Trash2, Layout, ChevronRight, ChevronDown, Coffee, Sliders, Wand2, Info, RotateCcw } from "lucide-react";
+import { Music, X, Feather, CheckCircle, Languages, Sparkles, Mic2, Heart, Palette, ListOrdered, Users, Save, Download, Trash2, Layout, ChevronRight, ChevronDown, Coffee, Sliders, Wand2, Info, RotateCcw, HelpCircle } from "lucide-react";
 import { AgentStatus, LanguageProfile, GenerationSettings, SavedProfile } from "../types";
-import { SCENARIO_KNOWLEDGE_BASE, CeremonyDefinition } from "../config";
+import { SCENARIO_KNOWLEDGE_BASE, CeremonyDefinition, AUTO_OPTION, MOOD_OPTIONS, STYLE_OPTIONS, COMPLEXITY_OPTIONS, RHYME_SCHEME_OPTIONS, SINGER_CONFIG_OPTIONS, THEME_OPTIONS } from "../config";
 import { APP_LOGO } from "../assets/logo";
 
 interface SidebarProps {
@@ -14,6 +14,7 @@ interface SidebarProps {
   generationSettings: GenerationSettings;
   onSettingChange: (type: keyof GenerationSettings, value: string) => void;
   onLoadProfile: (lang: LanguageProfile, gen: GenerationSettings) => void;
+  onOpenHelp: () => void;
 }
 
 const SidebarSection = ({ 
@@ -126,7 +127,7 @@ const PreferenceSelect = ({
   </div>
 );
 
-export const Sidebar = React.memo(({ isOpen, onClose, agentStatus, languageSettings, onLanguageChange, generationSettings, onSettingChange, onLoadProfile }: SidebarProps) => {
+export const Sidebar = React.memo(({ isOpen, onClose, agentStatus, languageSettings, onLanguageChange, generationSettings, onSettingChange, onLoadProfile, onOpenHelp }: SidebarProps) => {
   const [profileName, setProfileName] = useState("");
   const [savedProfiles, setSavedProfiles] = useState<SavedProfile[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>("");
@@ -188,7 +189,7 @@ export const Sidebar = React.memo(({ isOpen, onClose, agentStatus, languageSetti
     onSettingChange('category', category);
     onSettingChange('ceremony', event.id);
     
-    // 2. Apply Smart Defaults from Knowledge Base
+    // 2. Apply Smart Defaults from Knowledge Base (explicit override of Auto)
     onSettingChange('theme', event.label);
     onSettingChange('mood', event.defaultMood);
     onSettingChange('style', event.defaultStyle);
@@ -203,17 +204,6 @@ export const Sidebar = React.memo(({ isOpen, onClose, agentStatus, languageSetti
   const languages = [
     "Assamese", "Bengali", "Bodo", "Dogri", "English", "Gujarati", "Hindi", "Kannada", "Kashmiri", "Konkani", "Maithili", 
     "Malayalam", "Manipuri", "Marathi", "Nepali", "Odia", "Punjabi", "Sanskrit", "Santali", "Sindhi", "Tamil", "Telugu", "Urdu"
-  ];
-
-  const moods = ["Happy", "Sad (Pathos)", "Energetic", "Peaceful", "Romantic (Shringara)", "Angry (Raudra)", "Mysterious", "Funny (Hasya)", "Courageous (Veera)", "Playful (Kids)", "Devotional", "Philosophical", "Custom"];
-  const styles = [
-    "Melody", "Fast Beat/Mass", "Classical", "Folk", "Western Fusion", "Rap/HipHop", "Ghazal/Sufi", "GenZ/Trendy", 
-    "Nursery Rhyme", "Anthem", "Custom"
-  ];
-  const complexities = ["Simple", "Poetic", "Complex"];
-  const rhymeSchemes = ["AABB", "ABAB", "ABCB", "AAAA", "AABCCB", "Free Verse", "Custom"];
-  const singerConfigs = [
-    "Male Solo", "Female Solo", "Duet (Male + Female)", "Group Chorus", "Child Solo", "Duet (Male + Male)", "Duet (Female + Female)", "Child Group", "Custom"
   ];
 
   const isMixed = languageSettings.primary !== languageSettings.secondary || languageSettings.primary !== languageSettings.tertiary;
@@ -407,7 +397,7 @@ export const Sidebar = React.memo(({ isOpen, onClose, agentStatus, languageSetti
                   label="Theme Override" 
                   icon={<Palette className="w-3 h-3 text-muted-foreground" />}
                   value={generationSettings.theme} 
-                  options={["Custom", ...SCENARIO_KNOWLEDGE_BASE.flatMap(c => c.events.map(e => e.label))]} 
+                  options={THEME_OPTIONS} 
                   customValue={generationSettings.customTheme}
                   onChange={(val) => onSettingChange('theme', val)}
                   onCustomChange={(val) => onSettingChange('customTheme', val)}
@@ -419,7 +409,7 @@ export const Sidebar = React.memo(({ isOpen, onClose, agentStatus, languageSetti
                     label="Emotional Mood" 
                     icon={<Heart className="w-3 h-3 text-muted-foreground" />}
                     value={generationSettings.mood} 
-                    options={moods} 
+                    options={MOOD_OPTIONS} 
                     customValue={generationSettings.customMood}
                     onChange={(val) => onSettingChange('mood', val)}
                     onCustomChange={(val) => onSettingChange('customMood', val)}
@@ -430,7 +420,7 @@ export const Sidebar = React.memo(({ isOpen, onClose, agentStatus, languageSetti
                     label="Musical Style" 
                     icon={<Mic2 className="w-3 h-3 text-muted-foreground" />}
                     value={generationSettings.style} 
-                    options={styles} 
+                    options={STYLE_OPTIONS} 
                     customValue={generationSettings.customStyle}
                     onChange={(val) => onSettingChange('style', val)}
                     onCustomChange={(val) => onSettingChange('customStyle', val)}
@@ -444,7 +434,7 @@ export const Sidebar = React.memo(({ isOpen, onClose, agentStatus, languageSetti
                     label="Singer Config" 
                     icon={<Users className="w-3 h-3 text-muted-foreground" />}
                     value={generationSettings.singerConfig} 
-                    options={singerConfigs} 
+                    options={SINGER_CONFIG_OPTIONS} 
                     customValue=""
                     onChange={(val) => onSettingChange('singerConfig', val)}
                     onCustomChange={() => {}}
@@ -455,7 +445,7 @@ export const Sidebar = React.memo(({ isOpen, onClose, agentStatus, languageSetti
                     label="Rhyme Pattern" 
                     icon={<ListOrdered className="w-3 h-3 text-muted-foreground" />}
                     value={generationSettings.rhymeScheme} 
-                    options={rhymeSchemes} 
+                    options={RHYME_SCHEME_OPTIONS} 
                     customValue={generationSettings.customRhymeScheme}
                     onChange={(val) => onSettingChange('rhymeScheme', val)}
                     onCustomChange={(val) => onSettingChange('customRhymeScheme', val)}
@@ -463,26 +453,25 @@ export const Sidebar = React.memo(({ isOpen, onClose, agentStatus, languageSetti
                   />
                 </div>
 
-                {/* Complexity Toggles */}
+                {/* Complexity Toggles - Update to dropdown to support Auto more easily, or keep as toggle if Auto is option? */}
                 <div className="space-y-2 pt-1">
                   <label className="text-[10px] font-medium text-muted-foreground flex items-center gap-1.5">
                     <Feather className="w-3 h-3" /> Complexity
                   </label>
-                  <div className="flex p-1 bg-secondary rounded-lg border border-border/50">
-                    {complexities.map((level) => (
-                      <button
-                        key={level}
-                        onClick={() => onSettingChange('complexity', level as any)}
-                        className={`flex-1 text-[10px] py-1.5 rounded-md transition-all font-medium ${
-                          generationSettings.complexity === level 
-                          ? "bg-background text-primary shadow-sm" 
-                          : "text-muted-foreground hover:text-foreground"
-                        }`}
+                   <div className="relative">
+                      <select 
+                        value={generationSettings.complexity}
+                        onChange={(e) => onSettingChange('complexity', e.target.value as any)}
+                        className="w-full bg-background border border-input text-foreground text-xs rounded-md focus:ring-1 focus:ring-primary focus:border-primary block p-2 pr-6 outline-none transition-colors appearance-none cursor-pointer hover:border-primary/50 truncate"
                       >
-                        {level}
-                      </button>
-                    ))}
-                  </div>
+                        {COMPLEXITY_OPTIONS.map(opt => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                      <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-muted-foreground">
+                        <ChevronDown className="w-3 h-3" />
+                      </div>
+                    </div>
                 </div>
              </div>
           </SidebarSection>
@@ -571,10 +560,17 @@ export const Sidebar = React.memo(({ isOpen, onClose, agentStatus, languageSetti
               active={agentStatus.currentAgent === "REVIEW"} 
             />
           </div>
+           <div className="mt-3 pt-2 border-t border-border/50">
+             <button 
+               onClick={onOpenHelp}
+               className="w-full flex items-center justify-center gap-2 text-xs font-medium text-muted-foreground hover:text-primary transition-colors py-1.5 bg-secondary/50 rounded-lg hover:bg-secondary"
+             >
+               <HelpCircle className="w-3.5 h-3.5" /> Help & Guide
+             </button>
+          </div>
         </div>
 
       </div>
     </>
   );
 });
-    

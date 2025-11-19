@@ -5,6 +5,35 @@ export const MODEL_NAME = "gemini-3-pro-preview";
 export const MODEL_FAST = "gemini-2.5-flash"; 
 export const TTS_MODEL = "gemini-2.5-flash-preview-tts";
 
+export const AUTO_OPTION = "Auto (AI Detect)";
+
+// --- CENTRALIZED DROPDOWN OPTIONS ---
+export const MOOD_OPTIONS = [
+  AUTO_OPTION, "Happy", "Sad (Pathos)", "Energetic", "Peaceful", "Romantic (Shringara)", 
+  "Angry (Raudra)", "Mysterious", "Funny (Hasya)", "Courageous (Veera)", "Playful (Kids)", 
+  "Devotional", "Philosophical", "Custom"
+];
+
+export const STYLE_OPTIONS = [
+  AUTO_OPTION, "Melody", "Fast Beat/Mass", "Classical", "Folk", "Western Fusion", 
+  "Rap/HipHop", "Ghazal/Sufi", "GenZ/Trendy", "Nursery Rhyme", "Anthem", "Custom"
+];
+
+export const COMPLEXITY_OPTIONS = [AUTO_OPTION, "Simple", "Poetic", "Complex"];
+
+export const RHYME_SCHEME_OPTIONS = [
+  AUTO_OPTION, "AABB", "ABAB", "ABCB", "AAAA", "AABCCB", "Free Verse", "Custom"
+];
+
+export const SINGER_CONFIG_OPTIONS = [
+  AUTO_OPTION, "Male Solo", "Female Solo", "Duet (Male + Female)", "Group Chorus", 
+  "Child Solo", "Duet (Male + Male)", "Duet (Female + Female)", "Child Group", "Custom"
+];
+
+export const THEME_OPTIONS = [
+  AUTO_OPTION, "Love", "Nature", "Urban", "Village", "War", "College", "Road Trip", "Rain", "Custom"
+];
+
 // --- MOOD ATMOSPHERE ENGINE ---
 export const MOOD_GRADIENTS: Record<string, string> = {
   "Happy": "from-yellow-100/20 via-orange-100/20 to-amber-100/20 dark:from-yellow-900/10 dark:via-orange-900/10 dark:to-amber-900/10",
@@ -19,7 +48,8 @@ export const MOOD_GRADIENTS: Record<string, string> = {
   "Playful (Kids)": "from-sky-100/20 via-pink-100/20 to-yellow-100/20 dark:from-sky-900/10 dark:via-pink-900/10 dark:to-yellow-900/10",
   "Devotional": "from-amber-100/20 via-yellow-100/20 to-orange-100/20 dark:from-amber-900/10 dark:via-yellow-900/10 dark:to-orange-900/10",
   "Philosophical": "from-indigo-100/20 via-slate-100/20 to-gray-100/20 dark:from-indigo-950/20 dark:via-slate-900/20 dark:to-gray-900/20",
-  "Custom": "from-slate-100/20 via-gray-100/20 to-zinc-100/20 dark:from-slate-900/20 dark:via-gray-900/20 dark:to-zinc-900/20"
+  "Custom": "from-slate-100/20 via-gray-100/20 to-zinc-100/20 dark:from-slate-900/20 dark:via-gray-900/20 dark:to-zinc-900/20",
+  [AUTO_OPTION]: "from-slate-100/20 via-gray-100/20 to-zinc-100/20 dark:from-slate-900/20 dark:via-gray-900/20 dark:to-zinc-900/20"
 };
 
 export const SUGGESTION_CHIPS: Record<string, string[]> = {
@@ -37,6 +67,36 @@ export const SUGGESTION_CHIPS: Record<string, string[]> = {
   "cinematic": [
     "Add a slow-motion entry feel", "Increase the tempo", "Add powerful Sanskrit words", "Make it a dark villain theme"
   ]
+};
+
+export const ENHANCED_PROMPTS: Record<string, string> = {
+  // Default Chips
+  "Write a Love Song": "Write a romantic melody about love at first sight. Context: The hero [Hero Name] sees the heroine [Heroine Name] in a crowded market. Time slows down. Describe her eyes and smile using poetic metaphors. Language: Telugu. Style: Melodious.",
+  "Compose a Mass Beat": "Compose a high-energy 'Mass' beat song for a hero entry. Context: The hero [Hero Name] arrives to save the village [Village Name]. Use punchy dialogues, loud drum descriptions, and words that elevate his strength (Veera). Language: Telugu with local slang.",
+  "Sad Breakup Song": "Write a heart-wrenching breakup song (Pathos). Context: The protagonist [Name] is walking alone in the rain, holding a returned gift. Memories of happy times haunt him. Use deep, emotional vocabulary.",
+  "Wedding Song": "Create a festive Wedding song for the 'Jeelakarra Bellam' ceremony. Context: The sacred moment of union between [Groom Name] and [Bride Name]. Blend traditional Sanskrit chants with Telugu lyrics describing the eternal bond. Mood: Devotional and Happy.",
+  "Motivational Anthem": "Write a powerful motivational anthem about rising from failure. Context: [Name] is training hard after a defeat. Use metaphors of fire, sweat, and climbing mountains. High tempo and inspiring.",
+  "Lullaby": "Write a soothing lullaby (Jola Pata) for a sleeping child [Child Name]. Context: A mother singing to her baby under the moonlight. References to 'Chandamama' and dreams. Very slow and melodic.",
+
+  // Edit/Refine Chips
+  "Make the chorus catchier": "Rewrite the [Chorus] section to make it catchier and more rhythmic. Use shorter words and a strong hook that repeats.",
+  "Add a rap bridge": "Add a [Bridge] section in Rap style. Use fast-paced rhymes and modern slang to increase the energy before the final chorus.",
+  "Simplify the language": "Rewrite the lyrics using simpler, everyday conversational language (Vaduka Bhasha). Remove any complex or archaic words.",
+  "Fix the rhymes in Verse 2": "Review [Verse 2] and fix the end rhymes (Anthya Prasa). Ensure the lines flow smoothly and sound musical.",
+  "Translate to English context": "Provide a brief English summary/translation of the lyrics context so I can understand the meaning better (do not translate the song lines themselves).",
+  "Make it sadder": "Rewrite the lyrics to be more emotional and painful. Use darker metaphors and focus on the feeling of loss.",
+
+  // Category specific (Love)
+  "Describe her eyes using moonlight": "Rewrite the verse to describe her eyes using metaphors of moonlight and stars. Make it very poetic.",
+  "Add a rain sequence": "Add a section describing sudden rain, symbolizing the overflow of emotions.",
+  "Make it a slow melody": "Adjust the structure and rhythm to fit a slow, soulful melody (ragam).",
+  "Focus on first meeting": "Focus the lyrics on the specific moment of their first meeting and the spark of attraction.",
+
+  // Category specific (Cinematic)
+  "Add a slow-motion entry feel": "Write the lyrics to match a slow-motion visual sequence. Use elongated words and grand descriptions.",
+  "Increase the tempo": "Rewrite the rhythm to fit a fast-paced, high-tempo beat. Short, punchy lines.",
+  "Add powerful Sanskrit words": "Infuse the lyrics with powerful Sanskrit words to give it a divine or epic feel.",
+  "Make it a dark villain theme": "Shift the tone to be dark and menacing, suitable for a villain's introduction."
 };
 
 // --- CULTURAL & EXPERIENTIAL KNOWLEDGE BASE (The "Samskara" & "Rasas" Engine) ---

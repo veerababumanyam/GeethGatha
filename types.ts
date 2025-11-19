@@ -73,7 +73,8 @@ export interface GenerationSettings {
   customMood: string;
   style: string;
   customStyle: string;
-  complexity: "Simple" | "Poetic" | "Complex";
+  // Allow string for Auto mode ("Auto (AI Detect)")
+  complexity: "Simple" | "Poetic" | "Complex" | string;
   rhymeScheme: string;
   customRhymeScheme: string;
   singerConfig: string;

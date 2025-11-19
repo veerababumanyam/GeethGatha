@@ -65,34 +65,28 @@ export const runReviewAgent = async (
     REQUESTED COMPLEXITY: ${complexity}
     REQUESTED RHYME SCHEME: ${rhymeScheme}
 
-    TASK:
-    1. **LANGUAGE INTEGRITY (CRITICAL):**
-       - The content MUST be in ${languageProfile.primary} NATIVE SCRIPT.
-       - If the draft is in Romanized/Latin script (e.g., "Nenu"), CONVERT it to Native Script (e.g., "నేను").
-       - If the draft is in English Translation, REWRITE in ${languageProfile.primary}.
+    ROLE: You are a strict "Sahitya Pundit" (Literary Expert). Your job is to fix errors, not to compliment the writer.
 
-    2. **COMPLEXITY CHECK:**
-       - If "Simple": Ensure conversational vocabulary.
-       - If "Poetic": Ensure beauty without being obscure.
-    
-    3. **RHYME & PRASA REPAIR (CRITICAL):**
+    TASK:
+    1. **SCRIPT AUDIT (HIGHEST PRIORITY):**
+       - **REJECT** any lines written in English/Roman script (Transliteration) like "Nenu vastunnanu".
+       - **CONVERT** them immediately to Native Script: "నేను వస్తున్నాను".
+       - The final output must contain 0% Roman characters in the lyrics lines.
+
+    2. **RHYME & PRASA REPAIR:**
        - **TARGET SCHEME:** ${rhymeScheme} (${rhymeInstruction})
-       - **AUDIT:** Read the ending of every line in Verses and Choruses.
-       - **CHECK:** Do they strictly follow the ${rhymeScheme} pattern?
-       - **FIX:** If lines break the pattern, **REWRITE THEM IMMEDIATELY**.
-         *Example for AABB:* If Line 1 ends in "Raagam" and Line 2 ends in "Pata" (No rhyme), change Line 2 to something ending in "gam/gham" like "Thyaagam".
+       - Check the "Anthya Prasa" (End Rhyme) of every matching line.
+       - If they do not rhyme phonetically, **REWRITE** the line to force a rhyme while keeping the meaning.
+       - Do not allow weak rhymes.
+
+    3. **STRUCTURE & FORMATTING:**
+       - Ensure standardized English tags: [Chorus], [Verse 1], [Bridge].
+       - Remove any metadata lines inside the sections.
+       - Ensure the song is complete (Intro to Outro).
     
-    4. **STRUCTURAL AUDIT:**
-       - Ensure there is an **[Intro]** with humming/mood lines.
-       - Ensure there are **[Verse 1]**, **[Verse 2]**, and **[Verse 3]**.
-       - Ensure the **[Chorus]** is repeated at least 2-3 times.
-       - Ensure there is a **[Bridge]** and **[Outro]**.
-       - **IF ANY SECTION IS MISSING, YOU MUST GENERATE IT.**
-    
-    5. **SYNTAX ENFORCEMENT:** 
-       - Change "Pallavi" -> **[Chorus]**.
-       - Change "Charanam" -> **[Verse]**.
-       - All headers must be in **[Square Brackets]** and in English.
+    4. **COMPLEXITY CHECK:**
+       - If "Simple": Remove archaic/Grandhika words.
+       - If "Poetic": Ensure metaphors are logical.
 
     Return the COMPLETE, CORRECTED version in JSON.
   `;
@@ -105,7 +99,7 @@ export const runReviewAgent = async (
         systemInstruction: SYSTEM_INSTRUCTION_REVIEW,
         responseMimeType: "application/json",
         responseSchema: lyricsSchema,
-        temperature: 0.4, // Low temperature for precision
+        temperature: 0.3, // Very low temperature for strict adherence
       }
     });
 
