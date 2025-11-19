@@ -1,25 +1,40 @@
 
-import { GoogleGenAI } from "@google/genai";
-import { MODEL_NAME, SYSTEM_INSTRUCTION_FORMATTER } from "../config";
 
-export const runFormatterAgent = async (lyrics: string, apiKey?: string): Promise<string> => {
+import { GoogleGenAI, Type } from "@google/genai";
+import { MODEL_NAME, SYSTEM_INSTRUCTION_FORMATTER, DEFAULT_HQ_TAGS } from "../config";
+import { cleanAndParseJSON } from "../utils";
+
+export interface FormatterOutput {
+  stylePrompt: string;
+  formattedLyrics: string;
+}
+
+export const runFormatterAgent = async (lyrics: string, apiKey?: string): Promise<FormatterOutput> => {
   const key = apiKey || process.env.API_KEY;
   if (!key) throw new Error("API Key is missing");
 
   const ai = new GoogleGenAI({ apiKey: key });
+
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      stylePrompt: { type: Type.STRING, description: "A creative music style prompt with HQ tags." },
+      formattedLyrics: { type: Type.STRING, description: "The lyrics with enhanced meta-tags." }
+    },
+    required: ["stylePrompt", "formattedLyrics"]
+  };
 
   const prompt = `
     INPUT LYRICS:
     ${lyrics}
 
     TASK:
-    Convert the above lyrics into strict Suno.com format.
-    1. **PRESERVE STRUCTURE:** Keep ALL repeated Choruses. Ensure [Intro], [Verse 1], [Chorus], [Verse 2], [Chorus], [Bridge], [Verse 3], [Chorus], [Outro] are all present in this order.
-    2. **REMOVE** all lines starting with "Title:", "Language:", "Raagam:", "Taalam:", "Structure:", "Context:".
-    3. **REMOVE** any "Editor's Report" or "Analysis" sections.
-    4. **FORMAT** section headers to [Chorus], [Verse], [Bridge], [Outro], [Intro].
-    5. **FORMAT** voice tags to [Male Vocals], [Female Vocals].
-    6. **OUTPUT** only the raw tag-based lyrics. No markdown.
+    1. Generate a "Creative Music Style Prompt" for Suno.com.
+       - If Indian/Asian: Mix Global genres with Native instruments (Fusion).
+       - If European/Western: Use specific sub-genres and authentic instrumentation.
+    2. **IMPORTANT:** The stylePrompt MUST end with: "${DEFAULT_HQ_TAGS}".
+    3. Format the lyrics with [Square Bracket] meta-tags for Suno.
+    4. **STRICT RULE:** Do NOT generate [Spoken Word].
   `;
 
   try {
@@ -28,15 +43,27 @@ export const runFormatterAgent = async (lyrics: string, apiKey?: string): Promis
       contents: prompt,
       config: {
         systemInstruction: SYSTEM_INSTRUCTION_FORMATTER,
-        temperature: 0.1, // Low temperature for strict formatting adherence
-        topP: 0.8,
+        temperature: 0.75,
+        responseMimeType: "application/json",
+        responseSchema: schema
       }
     });
 
-    return response.text || lyrics;
+    if (response.text) {
+        return cleanAndParseJSON<FormatterOutput>(response.text);
+    }
+    
+    // Fallback
+    return { 
+      stylePrompt: `Cinematic, Fusion, ${DEFAULT_HQ_TAGS}`, 
+      formattedLyrics: lyrics 
+    };
+
   } catch (error) {
     console.error("Formatter Agent Error:", error);
-    // Fallback: Return original if formatting fails
-    return lyrics;
+    return { 
+      stylePrompt: `Global Music Style, ${DEFAULT_HQ_TAGS}`, 
+      formattedLyrics: lyrics 
+    };
   }
 };

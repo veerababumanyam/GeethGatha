@@ -1,4 +1,5 @@
 
+
 import { useState } from "react";
 import { AgentStatus, AgentStep, Message, LanguageProfile, GenerationSettings, EmotionAnalysis } from "../types";
 import { runMultiModalAgent } from "../agents/multimodal";
@@ -135,7 +136,9 @@ export const useOrchestrator = () => {
 
       // --- Step 6: Formatter (Suno.com) ---
       setAgentStatus(prev => ({ ...prev, currentAgent: "FORMATTER", message: "Formatting for Suno.com...", steps: prev.steps.map(s => s.id === 'formatter' ? { ...s, status: 'active' } : s) }));
-      const sunoLyrics = await runFormatterAgent(finalLyrics, apiKey);
+      
+      // Now returns object { stylePrompt, formattedLyrics }
+      const sunoData = await runFormatterAgent(finalLyrics, apiKey);
       updateAgentStep('formatter', 'completed');
 
       // --- Step 7: Final Output ---
@@ -150,7 +153,8 @@ export const useOrchestrator = () => {
         id: workflowId + "_final",
         role: "model",
         content: outputContent,
-        sunoFormattedContent: sunoLyrics,
+        sunoFormattedContent: sunoData.formattedLyrics,
+        sunoStylePrompt: sunoData.stylePrompt, // Store the specific style prompt
         senderAgent: "ORCHESTRATOR",
         timestamp: new Date(),
         complianceReport: complianceReport

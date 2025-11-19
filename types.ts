@@ -1,4 +1,5 @@
 
+
 export type AgentType = "CHAT" | "RESEARCH" | "LYRICIST" | "REVIEW" | "ORCHESTRATOR" | "EMOTION" | "COMPLIANCE" | "MULTIMODAL" | "FORMATTER";
 
 export interface Message {
@@ -16,6 +17,7 @@ export interface Message {
   };
   complianceReport?: ComplianceReport;
   sunoFormattedContent?: string; // Specialized format for Suno.com
+  sunoStylePrompt?: string; // New: Specific style string for Suno
 }
 
 export interface AgentStep {
@@ -78,6 +80,7 @@ export interface GenerationSettings {
   rhymeScheme: string;
   customRhymeScheme: string;
   singerConfig: string;
+  customSingerConfig?: string;
 }
 
 export interface SavedProfile {
@@ -86,6 +89,18 @@ export interface SavedProfile {
   language: LanguageProfile;
   generation: GenerationSettings;
   timestamp: number;
+}
+
+// --- NEW: Saved Song Library ---
+export interface SavedSong {
+  id: string;
+  title: string;
+  content: string;
+  sunoContent?: string;
+  sunoStylePrompt?: string;
+  timestamp: number;
+  language?: string;
+  theme?: string;
 }
 
 export interface LyricLine {

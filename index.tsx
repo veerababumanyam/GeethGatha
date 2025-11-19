@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 
 // Modular Imports
-import { AgentType, Message, LanguageProfile, GenerationSettings, AppearanceSettings, AppTheme } from "./types";
+import { AgentType, Message, LanguageProfile, GenerationSettings, AppearanceSettings, AppTheme, SavedSong } from "./types";
 import { runChatAgent } from "./agents/chat";
 import { useOrchestrator } from "./hooks/useOrchestrator";
 import { getLanguageCode, GeminiError } from "./utils";
@@ -81,19 +81,39 @@ const INITIAL_MESSAGE: Message = {
 // --- Main App Orchestrator ---
 
 const App = () => {
-  // Load messages from persistence or use default
+  // Load messages from persistence with Safety Check
   const [messages, setMessages] = useState<Message[]>(() => {
     const saved = localStorage.getItem("swaz_chat_history");
     if (saved) {
       try {
-        // Re-hydrate dates
         const parsed = JSON.parse(saved);
-        return parsed.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }));
+        // Safety Check: Ensure it's an array
+        if (Array.isArray(parsed)) {
+          return parsed.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }));
+        }
       } catch (e) {
-        console.error("Failed to load history", e);
+        console.error("Failed to load history, resetting.", e);
+        localStorage.removeItem("swaz_chat_history");
       }
     }
     return [INITIAL_MESSAGE];
+  });
+
+  // Load Saved Songs Library with Safety Check
+  const [savedSongs, setSavedSongs] = useState<SavedSong[]>(() => {
+    const saved = localStorage.getItem("swaz_song_library");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed;
+        }
+      } catch (e) {
+        console.error("Failed to load library", e);
+        localStorage.removeItem("swaz_song_library");
+      }
+    }
+    return [];
   });
 
   const [input, setInput] = useState("");
@@ -101,7 +121,7 @@ const App = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   
-  // API Key Management - Initialize lazily from storage to prevent flash of "no key"
+  // API Key Management
   const [apiKey, setApiKey] = useState(() => {
     return localStorage.getItem("gemini_api_key") || "";
   });
@@ -118,11 +138,15 @@ const App = () => {
   // Appearance State with Persistence
   const [appearance, setAppearance] = useState<AppearanceSettings>(() => {
     const saved = localStorage.getItem("swaz_appearance");
-    return saved ? JSON.parse(saved) : {
-      fontSize: 16,
-      themeId: "swaz",
-      customThemes: []
-    };
+    try {
+      return saved ? JSON.parse(saved) : {
+        fontSize: 16,
+        themeId: "swaz",
+        customThemes: []
+      };
+    } catch (e) {
+      return { fontSize: 16, themeId: "swaz", customThemes: [] };
+    }
   });
 
   const handleUpdateAppearance = (newSettings: AppearanceSettings) => {
@@ -137,7 +161,7 @@ const App = () => {
     tertiary: "Telugu"
   });
 
-  // Detailed Generation Preferences - INITIALIZE TO AUTO
+  // Detailed Generation Preferences
   const [genSettings, setGenSettings] = useState<GenerationSettings>({
     category: "",
     ceremony: "",
@@ -147,10 +171,11 @@ const App = () => {
     customMood: "",
     style: AUTO_OPTION,
     customStyle: "",
-    complexity: AUTO_OPTION, // Will resolve to "Poetic" or "Simple" by AI
+    complexity: AUTO_OPTION, 
     rhymeScheme: AUTO_OPTION,
     customRhymeScheme: "",
-    singerConfig: AUTO_OPTION
+    singerConfig: AUTO_OPTION,
+    customSingerConfig: ""
   });
 
   const { agentStatus, setAgentStatus, runSongGenerationWorkflow } = useOrchestrator();
@@ -160,29 +185,27 @@ const App = () => {
   const recognitionRef = useRef<any>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Persist Messages
+  // Persist Messages (Auto-Save)
   useEffect(() => {
     if (messages.length > 0) {
-      // Limit history size to avoid storage quota
-      const messagesToSave = messages.slice(-50); 
+      const messagesToSave = messages.slice(-100); 
       localStorage.setItem("swaz_chat_history", JSON.stringify(messagesToSave));
     }
   }, [messages]);
 
-  // Apply Appearance Changes (Theme Variables + Font Size)
+  // Persist Saved Songs Library
+  useEffect(() => {
+    localStorage.setItem("swaz_song_library", JSON.stringify(savedSongs));
+  }, [savedSongs]);
+
+  // Apply Appearance Changes
   useEffect(() => {
     const root = document.documentElement;
-    
-    // 1. Set Font Size on HTML Root (Scales Rem units)
     root.style.fontSize = `${appearance.fontSize}px`;
-
-    // 2. Find Current Theme
     const allThemes = [...DEFAULT_THEMES, ...appearance.customThemes];
     const activeTheme = allThemes.find(t => t.id === appearance.themeId) || DEFAULT_THEMES[0];
 
-    // 3. Set CSS Variables for Global Design
     if (activeTheme) {
-      // Map legacy AppTheme to new Shadcn HSL Variables
       root.style.setProperty('--background', hexToHSL(activeTheme.colors.bgMain));
       root.style.setProperty('--foreground', hexToHSL(activeTheme.colors.textMain));
       root.style.setProperty('--card', hexToHSL(activeTheme.colors.bgSidebar));
@@ -191,7 +214,7 @@ const App = () => {
       root.style.setProperty('--popover-foreground', hexToHSL(activeTheme.colors.textMain));
       root.style.setProperty('--primary', hexToHSL(activeTheme.colors.accent));
       root.style.setProperty('--primary-foreground', hexToHSL(activeTheme.colors.accentText));
-      root.style.setProperty('--secondary', hexToHSL(activeTheme.colors.bgSidebar)); // fallback
+      root.style.setProperty('--secondary', hexToHSL(activeTheme.colors.bgSidebar)); 
       root.style.setProperty('--secondary-foreground', hexToHSL(activeTheme.colors.textSecondary));
       root.style.setProperty('--muted', hexToHSL(activeTheme.colors.border)); 
       root.style.setProperty('--muted-foreground', hexToHSL(activeTheme.colors.textSecondary));
@@ -201,14 +224,12 @@ const App = () => {
       root.style.setProperty('--input', hexToHSL(activeTheme.colors.border));
       root.style.setProperty('--ring', hexToHSL(activeTheme.colors.accent));
 
-      // Sync with Tailwind dark mode class
       if (appearance.themeId === 'dark' || appearance.themeId === 'royal' || appearance.themeId === 'swaz') {
         root.classList.add('dark');
       } else {
         root.classList.remove('dark');
       }
     }
-
   }, [appearance]);
 
   useEffect(() => {
@@ -224,7 +245,7 @@ const App = () => {
     }
   }, [input]);
 
-  // --- Handlers (Memoized) ---
+  // --- Handlers ---
 
   const handleLanguageChange = useCallback((key: keyof LanguageProfile, value: string) => {
     setLanguageSettings(prev => ({ ...prev, [key]: value }));
@@ -240,24 +261,55 @@ const App = () => {
   }, []);
 
   const handleClearChat = () => {
-    if (confirm("Are you sure you want to clear the conversation history?")) {
+    if (confirm("Are you sure you want to clear the conversation history? Saved songs in the Library will remain.")) {
       setMessages([INITIAL_MESSAGE]);
-      localStorage.removeItem("swaz_chat_history");
     }
   };
 
   const handleSuggestionClick = (label: string) => {
     const enhancedPrompt = ENHANCED_PROMPTS[label] || label;
     setInput(enhancedPrompt);
-    // Give browser time to render new value then focus
     setTimeout(() => {
         if (textareaRef.current) {
             textareaRef.current.focus();
-            // adjust height
             textareaRef.current.style.height = "auto";
             textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
         }
     }, 10);
+  };
+
+  // --- Library Handlers ---
+
+  const handleSaveSong = (data: { title: string, content: string, sunoContent?: string, sunoStylePrompt?: string, language?: string }) => {
+     const newSong: SavedSong = {
+         id: Date.now().toString(),
+         title: data.title || "Untitled Composition",
+         content: data.content,
+         sunoContent: data.sunoContent,
+         sunoStylePrompt: data.sunoStylePrompt,
+         language: data.language,
+         timestamp: Date.now()
+     };
+     setSavedSongs(prev => [newSong, ...prev]);
+  };
+
+  const handleDeleteSong = (id: string) => {
+    if (confirm("Delete this song from your library?")) {
+      setSavedSongs(prev => prev.filter(s => s.id !== id));
+    }
+  };
+
+  const handleLoadSong = (song: SavedSong) => {
+    addMessage({
+        id: Date.now().toString(),
+        role: "model",
+        content: song.content,
+        sunoFormattedContent: song.sunoContent,
+        sunoStylePrompt: song.sunoStylePrompt,
+        senderAgent: "ORCHESTRATOR",
+        timestamp: new Date(),
+    });
+    setIsSidebarOpen(false);
   };
 
   // --- Processing Logic ---
@@ -291,7 +343,6 @@ const App = () => {
         await runChatWorkflow(userText);
       }
     } catch (error: any) {
-      // Catch AUTH errors that bubbled up from workflows
       if (error.name === 'GeminiError' && error.type === 'AUTH') {
         setIsSettingsOpen(true);
         setMessages(prev => [...prev, {
@@ -328,9 +379,8 @@ const App = () => {
         },
       ]);
     } catch (error: any) {
-      console.error("Chat Error:", error);
       if (error.name === 'GeminiError' && error.type === 'AUTH') {
-        throw error; // Re-throw to processUserMessage to open settings
+        throw error; 
       }
       addErrorMessage(error.message || "Connection failed.");
     } finally {
@@ -378,7 +428,6 @@ const App = () => {
     recognitionRef.current.start();
   };
   
-  // Get correct suggestion chips based on last interaction
   const getSuggestions = () => {
     if (messages.length > 0) {
       const lastMsg = messages[messages.length - 1];
@@ -388,6 +437,9 @@ const App = () => {
     if (genSettings.category === 'cinematic') return SUGGESTION_CHIPS['cinematic'];
     return SUGGESTION_CHIPS['default'];
   };
+
+  const root = document.getElementById("root");
+  if (!root) return null;
 
   return (
     <div className="flex h-screen bg-background text-foreground overflow-hidden font-telugu transition-colors duration-300 relative">
@@ -405,6 +457,9 @@ const App = () => {
         onSettingChange={handleSettingChange}
         onLoadProfile={handleLoadProfile}
         onOpenHelp={() => setIsHelpOpen(true)}
+        savedSongs={savedSongs}
+        onDeleteSong={handleDeleteSong}
+        onLoadSong={handleLoadSong}
       />
 
       <SettingsModal 
@@ -523,7 +578,13 @@ const App = () => {
                    {/* Custom Render for Lyrics vs Standard Text */}
                    {msg.senderAgent === "ORCHESTRATOR" && msg.content.includes("[") ? (
                      <>
-                      <LyricsRenderer content={msg.content} sunoContent={msg.sunoFormattedContent} apiKey={apiKey} />
+                      <LyricsRenderer 
+                        content={msg.content} 
+                        sunoContent={msg.sunoFormattedContent} 
+                        sunoStylePrompt={msg.sunoStylePrompt}
+                        apiKey={apiKey}
+                        onSave={(data) => handleSaveSong(data)} 
+                      />
                       {msg.complianceReport && (
                         <div className="mt-4 pt-4 border-t border-border text-xs font-mono text-muted-foreground">
                           <div className="flex items-center gap-2">
@@ -614,5 +675,8 @@ const App = () => {
   );
 };
 
-const root = createRoot(document.getElementById("root")!);
-root.render(<App />);
+const rootElement = document.getElementById("root");
+if (rootElement) {
+  const root = createRoot(rootElement);
+  root.render(<App />);
+}

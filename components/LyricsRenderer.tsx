@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect, useRef } from "react";
-import { Music, Copy, Play, RefreshCw, Sparkles, Clock, ListMusic, FileCode, Eye, Loader2, Square, Download, Printer, Share2, Edit3, Save, Wand2, Check, Image as ImageIcon2, XCircle, CheckCircle2 } from "lucide-react";
+import { Music, Copy, Play, RefreshCw, Sparkles, Clock, ListMusic, FileCode, Eye, Loader2, Square, Download, Printer, Share2, Edit3, Save, Wand2, Check, Image as ImageIcon2, XCircle, CheckCircle2, Bookmark, Speaker, Mic } from "lucide-react";
 import { GoogleGenAI, Modality } from "@google/genai";
-import { TTS_MODEL, MODEL_NAME } from "../config";
+import { TTS_MODEL, MODEL_NAME, MODEL_FAST } from "../config";
 import { playPCMData, wrapGenAIError } from "../utils";
 import { runArtAgent } from "../agents/art";
+import { runStyleAgent } from "../agents/style";
 
 interface TabButtonProps {
   icon: React.ReactNode;
@@ -50,8 +51,8 @@ const ActionButton = ({ icon, label, onClick, disabled, title }: { icon: React.R
 );
 
 const renderStyledLine = (line: string) => {
-  // Regex to find English structure tags and voice tags
-  const parts = line.split(/(\[(?:Male|Female|Both|Chorus|Verse|Pre-Chorus|Bridge|Hook|Intro|Outro|Instrumental|Child|Group|Duet|Big Chorus).*?\])/gi);
+  // Enhanced Regex to capture music meta-tags like [Guitar Solo] alongside voice tags
+  const parts = line.split(/(\[(?:Male|Female|Both|Chorus|Verse|Pre-Chorus|Bridge|Hook|Intro|Outro|Instrumental|Child|Group|Duet|Big Chorus|Drop|Build Up|Solo|Guitar|Spoken|Whisper).*?\])/gi);
 
   return (
     <span>
@@ -62,16 +63,18 @@ const renderStyledLine = (line: string) => {
           const p = part.toLowerCase();
           
           // Voices
-          if (p.includes("male")) colorClass = "text-blue-500 dark:text-blue-400 font-semibold";
-          if (p.includes("female")) colorClass = "text-pink-500 dark:text-pink-400 font-semibold";
+          if (p.includes("male") || p.includes("spoken")) colorClass = "text-blue-500 dark:text-blue-400 font-semibold";
+          if (p.includes("female") || p.includes("whisper")) colorClass = "text-pink-500 dark:text-pink-400 font-semibold";
           if (p.includes("both") || p.includes("duet")) colorClass = "text-purple-500 dark:text-purple-400 font-semibold";
           if (p.includes("child")) colorClass = "text-green-500 dark:text-green-400 font-semibold";
           
           // Structural (if embedded in line)
           if (p.includes("chorus") || p.includes("hook") || p.includes("group")) colorClass = "text-amber-600 dark:text-amber-400";
           
-          // Instructional
-          if (p.includes("intro") || p.includes("outro") || p.includes("instrumental")) colorClass = "text-muted-foreground font-mono text-[10px] uppercase tracking-widest opacity-70";
+          // Instrumental / Music Events
+          if (p.includes("intro") || p.includes("outro") || p.includes("instrumental") || p.includes("solo") || p.includes("drop")) {
+             colorClass = "text-emerald-600 dark:text-emerald-400 font-mono text-[10px] uppercase tracking-widest border border-emerald-500/20 bg-emerald-500/5 px-1 rounded";
+          }
 
           return (
             <span key={index} className={`mx-1 ${colorClass}`}>
@@ -106,10 +109,26 @@ const parseLyricsIntoSections = (lines: string[]) => {
   return sections;
 };
 
-export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: string, sunoContent?: string, apiKey?: string }) => {
+export const LyricsRenderer = ({ 
+  content, 
+  sunoContent, 
+  sunoStylePrompt, 
+  apiKey,
+  onSave 
+}: { 
+  content: string, 
+  sunoContent?: string, 
+  sunoStylePrompt?: string,
+  apiKey?: string,
+  onSave?: (data: any) => void
+}) => {
   const [viewMode, setViewMode] = useState<'PRETTY' | 'EDIT' | 'SUNO'>('PRETTY');
   const [editableContent, setEditableContent] = useState(content);
   
+  // Style Prompt State
+  const [localStylePrompt, setLocalStylePrompt] = useState(sunoStylePrompt || "");
+  const [isEnhancingStyle, setIsEnhancingStyle] = useState(false);
+
   // Audio States
   const [globalAudioStatus, setGlobalAudioStatus] = useState<'IDLE' | 'GENERATING' | 'PLAYING'>('IDLE');
   const [playingSectionId, setPlayingSectionId] = useState<number | null>(null);
@@ -120,10 +139,16 @@ export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: stri
   const [coverArtUrl, setCoverArtUrl] = useState<string | null>(null);
   const [isGeneratingArt, setIsGeneratingArt] = useState(false);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
+  const [styleCopyStatus, setStyleCopyStatus] = useState<'idle' | 'copied'>('idle');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle');
 
   useEffect(() => {
     setEditableContent(content);
   }, [content]);
+
+  useEffect(() => {
+    if (sunoStylePrompt) setLocalStylePrompt(sunoStylePrompt);
+  }, [sunoStylePrompt]);
 
   useEffect(() => {
     if (copyStatus === 'copied') {
@@ -131,6 +156,20 @@ export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: stri
       return () => clearTimeout(timer);
     }
   }, [copyStatus]);
+
+  useEffect(() => {
+    if (styleCopyStatus === 'copied') {
+      const timer = setTimeout(() => setStyleCopyStatus('idle'), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [styleCopyStatus]);
+
+  useEffect(() => {
+    if (saveStatus === 'saved') {
+      const timer = setTimeout(() => setSaveStatus('idle'), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [saveStatus]);
 
   const lines = editableContent.split('\n');
   const sections = parseLyricsIntoSections(lines);
@@ -148,9 +187,24 @@ export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: stri
     else lyricsLines.push(line);
   });
 
-  const copyToClipboard = (text: string) => {
+  const copyToClipboard = (text: string, isStyle = false) => {
     navigator.clipboard.writeText(text);
-    setCopyStatus('copied');
+    if (isStyle) setStyleCopyStatus('copied');
+    else setCopyStatus('copied');
+  };
+
+  const handleSaveLibrary = () => {
+    if (onSave) {
+      onSave({
+         title: metadata.title || "Untitled Song",
+         content: editableContent, // Save the edited version
+         sunoContent: sunoContent,
+         sunoStylePrompt: localStylePrompt, // Save the enhanced style
+         language: metadata.language,
+         structure: metadata.structure
+      });
+      setSaveStatus('saved');
+    }
   };
 
   const handleDownload = () => {
@@ -231,7 +285,7 @@ export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: stri
     try {
        const ai = new GoogleGenAI({ apiKey: apiKey });
        const response = await ai.models.generateContent({
-         model: MODEL_NAME,
+         model: MODEL_FAST, // Use FAST model for responsiveness
          contents: `Review the following song lyrics. Identify lines that have weak rhymes (Anthya Prasa). Rewrite ONLY those specific lines to have better rhyming endings while keeping the same meaning. Output the FULL improved lyrics. \n\n ${editableContent}`
        });
        if (response.text) {
@@ -243,6 +297,20 @@ export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: stri
       alert(`Optimization Failed: ${err.message}`);
     } finally {
       setIsFixingRhyme(false);
+    }
+  };
+
+  const handleEnhanceStyle = async () => {
+    if (!apiKey) return;
+    setIsEnhancingStyle(true);
+    try {
+      const enhanced = await runStyleAgent(localStylePrompt, editableContent, apiKey);
+      setLocalStylePrompt(enhanced);
+    } catch (e) {
+      const err = wrapGenAIError(e);
+      alert(`Style Enhancement Failed: ${err.message}`);
+    } finally {
+      setIsEnhancingStyle(false);
     }
   };
 
@@ -392,6 +460,13 @@ export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: stri
                 onClick={handleGenerateArt}
                 disabled={isGeneratingArt || !apiKey || !!coverArtUrl}
                 title={!apiKey ? "API Key Required" : "Generate Art"}
+            />
+            {/* SAVE TO LIBRARY BUTTON */}
+            <ActionButton 
+                icon={saveStatus === 'saved' ? <CheckCircle2 className="text-green-500" /> : <Bookmark />} 
+                label={saveStatus === 'saved' ? "Saved" : "Save to Library"}
+                onClick={handleSaveLibrary}
+                title="Save to persistent library"
             />
          </div>
          
@@ -548,19 +623,65 @@ export const LyricsRenderer = ({ content, sunoContent, apiKey }: { content: stri
       {viewMode === 'SUNO' && (
         <div className="font-mono text-sm relative animate-slideIn p-0">
           <div className="bg-slate-950 text-slate-300 p-6 min-h-[400px] overflow-x-auto relative">
-            <div className="absolute top-0 left-0 w-full h-10 bg-slate-900/50 border-b border-slate-800 flex items-center justify-between px-4">
-                 <span className="text-[10px] font-bold text-slate-500">SUNO V3.5 FORMAT</span>
-                 <button 
-                    onClick={() => copyToClipboard(sunoContent || '')}
-                    className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors"
-                 >
-                    {copyStatus === 'copied' ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
-                    {copyStatus === 'copied' ? 'Copied!' : 'Copy'}
-                 </button>
-            </div>
-            <pre className="whitespace-pre-wrap selection:bg-slate-700 mt-6">
-              {sunoContent || "No Suno format available."}
-            </pre>
+             <div className="absolute top-0 left-0 w-full h-10 bg-slate-900/50 border-b border-slate-800 flex items-center justify-between px-4">
+                 <span className="text-[10px] font-bold text-slate-500 flex items-center gap-2">
+                   <Music className="w-3 h-3" /> SUNO.COM WORKFLOW
+                 </span>
+             </div>
+             
+             <div className="mt-6 space-y-6">
+                 {/* Editable Style Prompt Section */}
+                 <div className="bg-slate-900 border border-slate-800 p-4 rounded-lg">
+                    <div className="flex justify-between items-center mb-2">
+                       <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500 flex items-center gap-2">
+                         Step 1: Music Style
+                         {isEnhancingStyle && <Loader2 className="w-3 h-3 animate-spin" />}
+                       </span>
+                       <div className="flex gap-2">
+                         <button 
+                            onClick={handleEnhanceStyle}
+                            disabled={isEnhancingStyle || !apiKey}
+                            className="flex items-center gap-1.5 text-xs text-amber-500 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-1 rounded-md transition-colors disabled:opacity-50"
+                            title="Generate creative fusion style with AI"
+                          >
+                              <Sparkles className="w-3 h-3" />
+                              Enhance
+                          </button>
+                          <button 
+                            onClick={() => copyToClipboard(localStylePrompt, true)}
+                            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors"
+                          >
+                              {styleCopyStatus === 'copied' ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                              {styleCopyStatus === 'copied' ? 'Copied' : 'Copy'}
+                          </button>
+                       </div>
+                    </div>
+                    <textarea 
+                      value={localStylePrompt}
+                      onChange={(e) => setLocalStylePrompt(e.target.value)}
+                      className="w-full bg-slate-950 text-white/90 text-sm leading-relaxed p-3 rounded border border-slate-700 focus:border-amber-500/50 outline-none resize-none selection:bg-amber-900/50"
+                      rows={3}
+                      placeholder="Describe the music style (e.g., Cinematic, fast tempo...)"
+                    />
+                 </div>
+
+                 {/* Lyrics Section */}
+                 <div className="bg-slate-900 border border-slate-800 p-4 rounded-lg">
+                    <div className="flex justify-between items-center mb-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-purple-500">Step 2: Lyrics</span>
+                        <button 
+                          onClick={() => copyToClipboard(sunoContent || '')}
+                          className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors"
+                        >
+                            {copyStatus === 'copied' ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                            {copyStatus === 'copied' ? 'Copied' : 'Copy Lyrics'}
+                        </button>
+                    </div>
+                    <pre className="whitespace-pre-wrap selection:bg-purple-900/50 text-slate-300 font-mono leading-relaxed">
+                      {sunoContent || "No Suno format available."}
+                    </pre>
+                 </div>
+             </div>
           </div>
         </div>
       )}

@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { MODEL_NAME, SYSTEM_INSTRUCTION_LYRICIST, SCENARIO_KNOWLEDGE_BASE } from "../config";
 import { GeneratedLyrics, LanguageProfile, EmotionAnalysis, GenerationSettings } from "../types";
@@ -12,7 +13,7 @@ const getRhymeDescription = (scheme: string): string => {
     case "AAAA": return "Monorhyme. All lines MUST end with the same phonetic sound.";
     case "AABCCB": return "Line 1 rhymes with 2. Line 4 rhymes with 5. Line 3 rhymes with 6.";
     case "Free Verse": return "No strict rhyme required, but focus on rhythm and flow.";
-    default: return "Ensure consistent end rhymes (Anthya Prasa) where appropriate.";
+    default: return "Ensure consistent end rhymes (Anthya Prasa) for all couplets.";
   }
 };
 
@@ -37,7 +38,7 @@ export const runLyricistAgent = async (
         description: "Format: 'Native Title'. Title should be in Native Script." 
       },
       language: { type: Type.STRING, description: "Description of the language mix used" },
-      ragam: { type: Type.STRING, description: "Suggested Carnatic/Hindustani Raagam" },
+      ragam: { type: Type.STRING, description: "Suggested Carnatic/Hindustani Raagam (or Scale/Mode for Western)" },
       taalam: { type: Type.STRING, description: "Suggested Time Signature or Beat" },
       structure: { type: Type.STRING, description: "Structure Overview (e.g., Intro-V1-C-V2-C-Br-V3-C-Outro)" },
       sections: {
@@ -49,7 +50,7 @@ export const runLyricistAgent = async (
             lines: { 
               type: Type.ARRAY, 
               items: { type: Type.STRING },
-              description: `The lyrics lines written STRICTLY in the ${languageProfile.primary} NATIVE SCRIPT. Do NOT use Roman/English characters for lyrics.`
+              description: `The lyrics lines written STRICTLY in the ${languageProfile.primary} native script/orthography.`
             }
           },
           required: ["sectionName", "lines"]
@@ -61,23 +62,38 @@ export const runLyricistAgent = async (
 
   // Construct the language instruction
   const isMixed = languageProfile.primary !== languageProfile.secondary || languageProfile.primary !== languageProfile.tertiary;
-  let languageInstruction = `PRIMARY LANGUAGE: "${languageProfile.primary}".
-    CRITICAL: Write the lyrics content STRICTLY in ${languageProfile.primary} NATIVE SCRIPT (e.g., if Telugu, use Telugu characters).
-    DO NOT USE ROMAN/LATIN CHARACTERS FOR LYRICS. DO NOT TRANSLITERATE.`;
+  
+  // Detect if strictly Indian context to enforce "No Latin Script" rule stronger
+  const indianLanguages = ["Telugu", "Hindi", "Tamil", "Kannada", "Malayalam", "Marathi", "Gujarati", "Bengali", "Punjabi", "Odia", "Assamese", "Sanskrit", "Urdu", "Sindhi", "Konkani", "Dogri", "Maithili", "Manipuri", "Santali", "Bodo"];
+  const isIndian = indianLanguages.includes(languageProfile.primary);
+
+  let languageInstruction = `PRIMARY LANGUAGE: "${languageProfile.primary}".`;
+  
+  if (isIndian) {
+      languageInstruction += `\n    CRITICAL: Write the lyrics content STRICTLY in ${languageProfile.primary} NATIVE SCRIPT.
+      DO NOT USE ROMAN/LATIN CHARACTERS FOR LYRICS (No Transliteration like "Nenu").`;
+  } else {
+      languageInstruction += `\n    CRITICAL: Write the lyrics in standard ${languageProfile.primary} script and orthography.`;
+  }
   
   if (isMixed) {
-    languageInstruction += `\n    SECONDARY LANGUAGES: "${languageProfile.secondary}" and "${languageProfile.tertiary}". Mix naturally, but keep the primary script as ${languageProfile.primary}.`;
+    languageInstruction += `\n    SECONDARY LANGUAGES: "${languageProfile.secondary}" and "${languageProfile.tertiary}". Mix naturally.`;
   } else {
     languageInstruction += `\n    DO NOT mix other languages. Pure ${languageProfile.primary}.`;
   }
 
-  // Resolve custom vs dropdown values
-  const theme = generationSettings?.customTheme || generationSettings?.theme || "Love";
-  const mood = generationSettings?.customMood || generationSettings?.mood || "Romantic";
-  const style = generationSettings?.customStyle || generationSettings?.style || "Melody";
+  // Helper to resolve Custom vs Selection
+  const getVal = (val: string | undefined, custom: string | undefined, def: string) => {
+    if (val === "Custom") return custom || def;
+    return val || def;
+  };
+
+  const theme = getVal(generationSettings?.theme, generationSettings?.customTheme, "Love");
+  const mood = getVal(generationSettings?.mood, generationSettings?.customMood, "Romantic");
+  const style = getVal(generationSettings?.style, generationSettings?.customStyle, "Melody");
   const complexity = generationSettings?.complexity || "Poetic";
-  const rhymeScheme = generationSettings?.customRhymeScheme || generationSettings?.rhymeScheme || "AABB";
-  const singerConfig = generationSettings?.singerConfig || "Male Solo";
+  const rhymeScheme = getVal(generationSettings?.rhymeScheme, generationSettings?.customRhymeScheme, "AABB");
+  const singerConfig = getVal(generationSettings?.singerConfig, generationSettings?.customSingerConfig, "Male Solo");
   
   // --- SCENARIO CONTEXT INJECTION ---
   let scenarioInstruction = "";
@@ -106,11 +122,11 @@ export const runLyricistAgent = async (
   
   const rhymeInstruction = getRhymeDescription(rhymeScheme);
 
-  // Define explicit complexity instructions to override "Great Poet" bias
+  // Define explicit complexity instructions
   const complexityInstructions: Record<string, string> = {
-    "Simple": "STRICTLY use colloquial, everyday conversational language (e.g., Vaduka Bhasha for Telugu). Avoid Sanskritized words. Keep it catchy and simple to sing.",
+    "Simple": "STRICTLY use colloquial, everyday conversational language. Avoid archaic words. Keep it catchy and simple to sing.",
     "Poetic": "Use standard literary style with beautiful metaphors and flow.",
-    "Complex": "Use high classical vocabulary (e.g., Grandhika Bhasha), complex metaphors, and deep concepts."
+    "Complex": "Use high vocabulary, complex metaphors, and deep concepts."
   };
   
   const specificComplexityInstruction = complexityInstructions[complexity] || complexityInstructions["Poetic"];
@@ -121,8 +137,9 @@ export const runLyricistAgent = async (
     *** LANGUAGE INSTRUCTION (CRITICAL) ***
     ${languageInstruction}
     - **OUTPUT SCRIPT:** The lyrics text must be in ${languageProfile.primary} native script.
-    - **NO ENGLISH CONTENT:** Do NOT write the lyrics in English/Roman Script. Only the tags like [Chorus] are English.
+    - **NO ENGLISH CONTENT:** Do NOT write the lyrics in English/Roman Script (unless English is requested). Only the tags like [Chorus] are English.
     - **NO TRANSLATION:** Do not provide English translations in the JSON output lines.
+    - **NO SPOKEN WORD:** Do not generate sections marked as spoken, dialogue, or narration. All lines must be sung.
     
     STRICT CONFIGURATION:
     - Theme: ${theme}
@@ -142,6 +159,11 @@ export const runLyricistAgent = async (
     - **PATTERN DEFINITION:** ${rhymeInstruction}
     - You MUST maintain **ANTHYA PRASA** (End Rhyme) strictly according to the pattern above.
     - The last words/syllables of the matching lines MUST sound similar phonetically.
+
+    *** PUNCTUATION & EXPRESSION (MANDATORY): ***
+    - Add punctuation (comma, exclamation, question mark) to the end of every line to convey the singing expression.
+    - Do not produce "flat" text.
+    - Use '!' for intensity, ',' for flow, '?' for questions.
     
     EMOTIONAL ANALYSIS:
     - Navarasa: ${emotionData?.navarasa || 'N/A'}
@@ -151,13 +173,14 @@ export const runLyricistAgent = async (
     ${researchData}
 
     TASK:
-    Compose a high-fidelity Indian Cinema song.
+    Compose a high-fidelity song.
     
     *** THINKING PROCESS INSTRUCTION ***
     Before generating the JSON:
     1. Plan the **Maatra (Meter)**: Ensure lines have a singable rhythm.
     2. Plan the **Prasa (Rhymes)**: List out rhyming words for ${languageProfile.primary} that fit the ${mood} context.
     3. Draft the verses mentally to ensure the rhyme scheme ${rhymeScheme} is perfectly met.
+    4. **Add Expression**: Decide where to place '!', '?', and ',' to control the singing dynamic.
 
     MANDATORY STRUCTURAL BLUEPRINT (DO NOT DEVIATE):
     1. **[Intro]**: Include humming, alaap, or atmospheric sounds.

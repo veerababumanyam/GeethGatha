@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { MODEL_NAME, SYSTEM_INSTRUCTION_REVIEW } from "../config";
 import { GeneratedLyrics, LanguageProfile, GenerationSettings } from "../types";
@@ -87,6 +88,15 @@ export const runReviewAgent = async (
     4. **COMPLEXITY CHECK:**
        - If "Simple": Remove archaic/Grandhika words.
        - If "Poetic": Ensure metaphors are logical.
+
+    5. **PUNCTUATION & EXPRESSION FIX:**
+       - Scan the draft. If lines end without punctuation, ADD IT based on the mood.
+       - Use '!' for intensity, ',' for flow, '?' for questions, '...' for pauses.
+       - Ensure the lyrics look like poetry, not just text.
+
+    6. **NO SPOKEN WORD:**
+       - If detected, remove any [Spoken Word], [Dialogue], or [Narration] sections.
+       - Convert them to melodic verses or remove them entirely.
 
     Return the COMPLETE, CORRECTED version in JSON.
   `;

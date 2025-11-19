@@ -1,7 +1,8 @@
 
+
 import React, { useState, useEffect } from "react";
-import { Music, X, Feather, CheckCircle, Languages, Sparkles, Mic2, Heart, Palette, ListOrdered, Users, Save, Download, Trash2, Layout, ChevronRight, ChevronDown, Coffee, Sliders, Wand2, Info, RotateCcw, HelpCircle } from "lucide-react";
-import { AgentStatus, LanguageProfile, GenerationSettings, SavedProfile } from "../types";
+import { Music, X, Feather, CheckCircle, Languages, Sparkles, Mic2, Heart, Palette, ListOrdered, Users, Save, Download, Trash2, Layout, ChevronRight, ChevronDown, Coffee, Sliders, Wand2, Info, RotateCcw, HelpCircle, BookMarked, ArrowUpRight } from "lucide-react";
+import { AgentStatus, LanguageProfile, GenerationSettings, SavedProfile, SavedSong } from "../types";
 import { SCENARIO_KNOWLEDGE_BASE, CeremonyDefinition, AUTO_OPTION, MOOD_OPTIONS, STYLE_OPTIONS, COMPLEXITY_OPTIONS, RHYME_SCHEME_OPTIONS, SINGER_CONFIG_OPTIONS, THEME_OPTIONS } from "../config";
 import { APP_LOGO } from "../assets/logo";
 
@@ -15,6 +16,9 @@ interface SidebarProps {
   onSettingChange: (type: keyof GenerationSettings, value: string) => void;
   onLoadProfile: (lang: LanguageProfile, gen: GenerationSettings) => void;
   onOpenHelp: () => void;
+  savedSongs: SavedSong[];
+  onDeleteSong: (id: string) => void;
+  onLoadSong: (song: SavedSong) => void;
 }
 
 const SidebarSection = ({ 
@@ -127,7 +131,7 @@ const PreferenceSelect = ({
   </div>
 );
 
-export const Sidebar = React.memo(({ isOpen, onClose, agentStatus, languageSettings, onLanguageChange, generationSettings, onSettingChange, onLoadProfile, onOpenHelp }: SidebarProps) => {
+export const Sidebar = React.memo(({ isOpen, onClose, agentStatus, languageSettings, onLanguageChange, generationSettings, onSettingChange, onLoadProfile, onOpenHelp, savedSongs, onDeleteSong, onLoadSong }: SidebarProps) => {
   const [profileName, setProfileName] = useState("");
   const [savedProfiles, setSavedProfiles] = useState<SavedProfile[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>("");
@@ -202,8 +206,12 @@ export const Sidebar = React.memo(({ isOpen, onClose, agentStatus, languageSetti
   };
 
   const languages = [
+    // Indian
     "Assamese", "Bengali", "Bodo", "Dogri", "English", "Gujarati", "Hindi", "Kannada", "Kashmiri", "Konkani", "Maithili", 
-    "Malayalam", "Manipuri", "Marathi", "Nepali", "Odia", "Punjabi", "Sanskrit", "Santali", "Sindhi", "Tamil", "Telugu", "Urdu"
+    "Malayalam", "Manipuri", "Marathi", "Nepali", "Odia", "Punjabi", "Sanskrit", "Santali", "Sindhi", "Tamil", "Telugu", "Urdu",
+    // European
+    "Spanish", "French", "German", "Italian", "Portuguese", "Russian", "Dutch", "Polish", "Swedish", "Norwegian", "Danish", "Finnish",
+    "Greek", "Turkish", "Ukrainian", "Romanian", "Hungarian", "Czech", "Bulgarian", "Serbian", "Croatian", "Icelandic", "Gaelic"
   ];
 
   const isMixed = languageSettings.primary !== languageSettings.secondary || languageSettings.primary !== languageSettings.tertiary;
@@ -435,9 +443,9 @@ export const Sidebar = React.memo(({ isOpen, onClose, agentStatus, languageSetti
                     icon={<Users className="w-3 h-3 text-muted-foreground" />}
                     value={generationSettings.singerConfig} 
                     options={SINGER_CONFIG_OPTIONS} 
-                    customValue=""
+                    customValue={generationSettings.customSingerConfig || ""}
                     onChange={(val) => onSettingChange('singerConfig', val)}
-                    onCustomChange={() => {}}
+                    onCustomChange={(val) => onSettingChange('customSingerConfig', val)}
                     compact
                   />
 
@@ -475,10 +483,55 @@ export const Sidebar = React.memo(({ isOpen, onClose, agentStatus, languageSetti
                 </div>
              </div>
           </SidebarSection>
+          
+          {/* 3.5 Song Library */}
+          <SidebarSection 
+            title="Song Library" 
+            icon={<BookMarked />}
+            badge={savedSongs.length > 0 ? <span className="bg-primary text-[10px] px-1.5 py-0.5 rounded-full text-primary-foreground font-bold shadow-sm">{savedSongs.length}</span> : null}
+          >
+             {savedSongs.length > 0 ? (
+                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                     {savedSongs.map(song => (
+                       <div key={song.id} className="bg-secondary/30 hover:bg-secondary/80 p-2 rounded-lg group transition-all border border-transparent hover:border-border/50">
+                          <div className="flex items-center justify-between mb-1">
+                             <span className="text-xs text-foreground font-bold truncate max-w-[70%]" title={song.title}>{song.title}</span>
+                             <span className="text-[9px] text-muted-foreground">{new Date(song.timestamp).toLocaleDateString()}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                             <div className="flex gap-1">
+                                {song.language && <span className="text-[9px] bg-background/50 px-1.5 rounded border border-border/50 text-muted-foreground">{song.language}</span>}
+                             </div>
+                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                               <button 
+                                 onClick={() => onLoadSong(song)}
+                                 className="text-primary hover:bg-background p-1.5 rounded shadow-sm transition-colors" 
+                                 title="Load into Chat"
+                               >
+                                 <ArrowUpRight className="w-3 h-3" />
+                               </button>
+                               <button 
+                                 onClick={() => onDeleteSong(song.id)}
+                                 className="text-destructive hover:bg-background p-1.5 rounded shadow-sm transition-colors" 
+                                 title="Delete"
+                               >
+                                 <Trash2 className="w-3 h-3" />
+                               </button>
+                             </div>
+                          </div>
+                       </div>
+                     ))}
+                  </div>
+                ) : (
+                   <div className="text-center py-4 text-muted-foreground/40 border border-dashed border-border rounded-lg">
+                      <p className="text-[10px]">Save songs here to keep them forever</p>
+                   </div>
+                )}
+          </SidebarSection>
 
           {/* 4. Profiles */}
           <SidebarSection 
-            title="Profiles" 
+            title="Saved Configs" 
             icon={<Layout />}
             badge={savedProfiles.length > 0 ? <span className="bg-secondary text-[10px] px-1.5 py-0.5 rounded-full text-muted-foreground border border-border">{savedProfiles.length}</span> : null}
           >
@@ -495,7 +548,7 @@ export const Sidebar = React.memo(({ isOpen, onClose, agentStatus, languageSetti
                      onClick={handleSaveProfile}
                      disabled={!profileName}
                      className="bg-primary text-primary-foreground hover:brightness-110 px-3 rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm flex items-center justify-center"
-                     title="Save Profile"
+                     title="Save Config Profile"
                    >
                      <Save className="w-3.5 h-3.5" />
                    </button>
@@ -530,7 +583,7 @@ export const Sidebar = React.memo(({ isOpen, onClose, agentStatus, languageSetti
                   </div>
                 ) : (
                    <div className="text-center py-4 text-muted-foreground/40 border border-dashed border-border rounded-lg">
-                      <p className="text-[10px]">No saved profiles yet</p>
+                      <p className="text-[10px]">No saved configs yet</p>
                    </div>
                 )}
              </div>

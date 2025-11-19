@@ -1,6 +1,6 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { MODEL_NAME } from "../config";
+import { MODEL_NAME, MODEL_FAST } from "../config";
 
 export const runArtAgent = async (
   title: string, 
@@ -16,7 +16,7 @@ export const runArtAgent = async (
   try {
     // Step 1: Generate a creative image prompt based on the lyrics
     const promptResponse = await ai.models.generateContent({
-      model: MODEL_NAME,
+      model: MODEL_FAST,
       contents: `
         Role: Expert Visual Artist.
         Task: Create a detailed text-to-image prompt for an album cover based on this song.
